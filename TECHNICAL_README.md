@@ -60,7 +60,8 @@ data/
     ├── regression_projections.parquet    # Next-season ERA projections
     ├── quality_leaderboard.parquet       # 0-100 pitcher quality scores
     └── summaries/
-        └── cluster_summaries.json        # LLM or rule-based cluster narratives
+        ├── cluster_summaries.json         # HDBSCAN cluster narratives
+        └── cluster_summaries_kmeans.json # KMeans cluster narratives
 ```
 
 ### Storage format
@@ -108,11 +109,14 @@ For each pitcher with ≥200 pitches (default), one feature vector is constructe
 - `n_pitch_types` — arsenal breadth
 - `p_throws` — handedness
 
-**Per-pitch-type features (9 canonical types × 4 features = 36 columns):**
+**Per-pitch-type features (9 canonical types × 8 features = 72 columns):**
 - `pct_{PT}` — proportion of all pitches this type represents (0–1)
 - `velo_{PT}` — mean velocity for this pitch type (NaN if <10 thrown)
 - `spin_{PT}` — mean spin rate
-- `pfx_x_{PT}`, `pfx_z_{PT}` — mean movement
+- `pfx_x_{PT}`, `pfx_z_{PT}` — mean movement (gravity-free)
+- `spin_axis_{PT}` — mean spin axis (degrees)
+- `break_z_{PT}` — mean induced vertical break (IVB, from `api_break_z_with_gravity`)
+- `break_x_{PT}` — mean horizontal break (from `api_break_x_arm`)
 
 **Batted-ball outcomes (for pitchers with ≥20 batted balls):**
 - `avg_exit_velo_against` — mean exit velocity allowed
@@ -131,29 +135,42 @@ For each pitcher with ≥200 pitches (default), one feature vector is constructe
 
 The pipeline runs two approaches in parallel.
 
-### 3a. Baseline: KMeans
+### 3a. Feature modes: Two-layer vs single-layer
 
-1. **Feature selection** (`get_clustering_features`): all numeric columns except metadata (`pitcher`, `player_name`, `n_pitches`, `p_throws`).
+By default the pipeline uses **two-layer** clustering: Layer 1 clusters each pitch type by velocity/spin/movement into `quality_{PT}` archetypes (0..k−1); Layer 2 clusters pitchers by pitch mix (`pct_*`) and quality tiers (`quality_*`). Use `--no-two-layer` for legacy **single-layer** mode: full per-pitch velo/spin/movement/break features (no quality condensation).
+
+**Quality clusters are one-hot encoded** before clustering: `quality_FF` (0, 1, 2) becomes `quality_FF_0`, `quality_FF_1`, `quality_FF_2`, since cluster IDs have no ordinal meaning — cluster 0 vs 2 should be the same distance as cluster 0 vs 1.
+
+### 3b. Baseline: KMeans
+
+1. **Feature selection** (`get_clustering_features`): depends on mode — two-layer uses `pct_*` + `quality_*`; single-layer uses `get_similarity_features` (pct + velo/spin/movement/break per pitch).
 2. **Preprocessing** (`prepare_clustering_matrix`): fill NaN with column medians; `StandardScaler` normalisation.
 3. **Elbow analysis** (`find_optimal_k`): fit KMeans for k = 3–11; record inertia and silhouette score.
 4. **Fit** (`run_kmeans`): `sklearn.cluster.KMeans` with `n_init=10`, `random_state=42`.
 5. Default k=5, configurable via `--k` flag in `run_pipeline.py`.
 
-**Why KMeans:** Produces a clean, fixed-size partition. Every pitcher gets exactly one label. Good for interpretability and radar-chart comparisons.
+**Why KMeans:** Produces a clean, fixed-size partition. Every pitcher gets exactly one label. Good for interpretability.
 
 **Limitation:** Assumes spherical clusters of roughly equal size; sensitive to the choice of k; assigns every pitcher to a cluster even if they don't fit well.
 
-### 3b. Advanced: UMAP + HDBSCAN
+### 3c. Advanced: UMAP + HDBSCAN
 
-1. **UMAP reduction** (`compute_umap_embedding`): compress the high-dimensional feature matrix to **4D by default** (configurable 2–10) using `umap-learn`. Higher dimensions preserve more structure than 2D. Hyperparameters: `n_neighbors=30`, `min_dist=0.1`, `metric='euclidean'`.
-2. **HDBSCAN clustering** (`run_hdbscan`): fit on the full UMAP embedding (e.g. 4D). `min_cluster_size=8`, `min_samples=3`, `cluster_selection_method='leaf'`. Pitchers in sparse regions are labelled −1 (noise/outliers).
-3. **Embedding storage**: `umap_0`, `umap_1`, … are saved in the parquet so the dashboard can plot any 2 axes (e.g. Dim 0 vs Dim 2).
+1. **UMAP reduction** (`compute_umap_embedding`): compress the high-dimensional feature matrix to **6D by default** (configurable 2–10) using `umap-learn`. Higher dimensions preserve more structure. Hyperparameters: `n_neighbors=30`, `min_dist=0.1`, `metric='euclidean'`.
+2. **HDBSCAN clustering** (`run_hdbscan`): fit on the UMAP embedding (or optionally on the **original scaled feature space** via `hdbscan_use_original_space`). Defaults: `min_cluster_size=5`, `min_samples=1`, `cluster_selection_method='leaf'`, `cluster_selection_epsilon=0.1`. Pitchers in sparse regions are labelled −1 (noise/outliers).
+3. **Noise mitigation options:**
+   - **min_samples=1** — per HDBSCAN docs, yields the fewest noise points.
+   - **cluster_selection_epsilon** — merge clusters within a distance; absorbs borderline points (0.1–0.3 typical).
+   - **hdbscan_use_original_space** — cluster in scaled feature space instead of UMAP; preserves full structure.
+   - **hdbscan_assign_noise_via_soft** — assign each −1 to its most likely cluster via HDBSCAN soft clustering; yields 0% noise.
+4. **Embedding storage**: `umap_0`, `umap_1`, … are saved in the parquet so the dashboard can plot any 2 axes (e.g. Dim 0 vs Dim 2).
 
-**Why 4D:** 2D loses a lot of information when compressing ~70 features. 4D preserves more structure for better clustering while still allowing 2D projection for exploration.
+**Why 6D:** 2D loses a lot of information when compressing ~100+ features. 6D preserves more structure for better clustering while still allowing 2D projection for exploration.
 
-### 3c. Similarity Search
+### 3d. Similarity Search and Compare Two Pitchers
 
 `find_similar_pitchers`: compute **Euclidean distances** between standardized feature vectors (default). Euclidean penalizes magnitude differences (e.g. 92 vs 95 mph), so Abbott and Snell no longer appear overly similar. Cosine distance was deprecated because it measures direction only — similar pitch mix could group very different velocities.
+
+The dashboard includes a **Compare Two Pitchers** view: side-by-side table of velocity, spin, break, spin axis, and usage by pitch type, plus Euclidean distance in feature space.
 
 **Clustering and similarity use the same pitch-type-aware feature set** (`get_clustering_features` → `get_similarity_features`):
 - **Excluded**: `avg_velo`, `avg_spin`, `avg_pfx_*` — these blend across pitch types (e.g. 95 mph FF + 82 mph SL → 88.5 mph), losing structure.
@@ -162,7 +179,7 @@ The pipeline runs two approaches in parallel.
 
 ### Output
 
-`data/processed/pitcher_profiles_clustered.parquet` — same as pitcher_profiles plus `cluster_kmeans` and `cluster_hdbscan` columns.
+`data/processed/pitcher_profiles_clustered.parquet` — same as pitcher_profiles plus `cluster_kmeans`, `cluster_hdbscan`, and `umap_0`–`umap_{n-1}` columns.
 
 ---
 
@@ -410,7 +427,8 @@ All data loading uses `@st.cache_data` decorators so files are read from disk on
 
 ```python
 load_cluster_data()       → pitcher_profiles_clustered.parquet
-load_summaries()          → summaries/cluster_summaries.json
+load_summaries()          → summaries/cluster_summaries.json (HDBSCAN)
+load_summaries_kmeans()   → summaries/cluster_summaries_kmeans.json
 load_pitching_profiles()  → pitching_profiles_YYYY.parquet
 load_pitching_trends()    → pitching_trends.parquet
 load_regression_outputs() → 6 regression + quality parquet files
@@ -420,9 +438,20 @@ load_regression_outputs() → 6 regression + quality parquet files
 
 The clustering tabs require `pitcher_profiles_clustered.parquet`, which is only generated after running the full pitch-by-pitch pipeline. If absent, those tabs show an info banner with run instructions. The Traditional Stats, Quality Scores, and Regression Predictor tabs work independently and only require the outputs of `preprocess_pitching_bref.py` and `predict_actual_expected_residual.py`.
 
+### Tabs: Clustering and Rosters
+
+- **Clustering**: Unified tab with algorithm selector (HDBSCAN, KMeans, or Agglomerative Ward if available). UMAP scatter with X/Y axis selectors, cluster sizes bar chart, pie chart, and cluster narratives. HDBSCAN may label pitchers as noise (−1); mitigations (min_samples=1, epsilon, cluster in original space, assign noise soft) are available in the sidebar.
+- **Rosters & Performance**: Year selector, cluster method (HDBSCAN vs KMeans), performance table (ERA/WHIP/SO9 by cluster), expandable rosters per cluster.
+
+### Tabs: Similarity, Raw Data
+
+- **Similarity**: Pitcher search, 10 most similar by Euclidean distance, Compare Two Pitchers (side-by-side velo/spin/break/usage table).
+- **Raw Data**: Full profiles dataframe. **Clustering Feature Matrix** (expander): exact features used for clustering; filter by cluster (including noise −1) or feature name; downloadable CSV. Useful for diagnosing why pitchers are outliers.
+
 ### Sidebar
 
-- **LLM configuration**: provider (OpenAI / Groq / none), API key input, regenerate button
+- **LLM configuration**: provider (OpenAI / Groq / none), API key input, regenerate summaries button
+- **Re-run Clustering** (year-level): cluster year(s) multiselect, KMeans k, HDBSCAN min cluster size, UMAP dimensions, HDBSCAN epsilon, cluster selection (leaf/eom), "Cluster in original space" checkbox, min_samples (1–5), "Assign noise to nearest cluster (soft)" checkbox
 - **Season selector**: "All Years (2015–2025)" or individual season; controls the Traditional Stats tab
 
 ### Tab: Traditional & Expected Stats
@@ -454,15 +483,33 @@ Grade distribution summary (A+ through F counts), filterable leaderboard with `b
 
 Combines all backend steps with CLI flags:
 
+**Clustering (year-level):**
 ```
---start / --end          Statcast date range for pitch-by-pitch data
+--cluster-years          Year(s) to cluster on (default: 2022 2023 2024)
+--start / --end          Override Statcast date range (ignored if --cluster-years set)
 --min-pitches            Minimum pitcher pitch count (default: 200)
---k                      Number of KMeans clusters (default: 5)
+--k                      KMeans clusters (default: 5)
+--pitch-quality-k        Layer 1: clusters per pitch type when using two-layer (default: 3)
+--no-two-layer           Use legacy single-layer clustering (pct_* + velo/spin/movement per pitch)
+--umap-neighbors         UMAP n_neighbors (default: 30)
+--umap-min-dist         UMAP min_dist (default: 0.1)
+--umap-components       UMAP n_components (default: 6)
+--hdbscan-min-cluster-size  HDBSCAN min_cluster_size (default: 5)
+--hdbscan-min-samples    HDBSCAN min_samples (default: 1; smaller = less noise)
+--hdbscan-cluster-selection  leaf or eom (default: leaf)
+--hdbscan-epsilon        HDBSCAN cluster_selection_epsilon (default: 0.1)
+--hdbscan-original-space  Cluster in scaled feature space instead of UMAP
+--hdbscan-assign-noise-soft  Assign −1 to nearest cluster via soft clustering (0% noise)
+--skip-clustering        Skip pitch-by-pitch pipeline
 --skip-llm               Use rule-based fallback instead of LLM
---skip-clustering        Skip pitch-by-pitch pipeline (only run pitching stats)
---skip-pitching-stats    Skip traditional stats pipeline (only run clustering)
---years                  List of seasons for pitching stats (default: 2015-2025)
+```
+
+**Pitching stats:**
+```
+--years                  Seasons for pitching stats (default: 2015-2025)
 --min-ip                 Minimum IP for qualifying pitchers (default: 20)
+--skip-pitching-stats    Skip traditional stats pipeline
+--skip-regression        Skip regression / quality-score pipeline
 ```
 
 ### Step ordering
