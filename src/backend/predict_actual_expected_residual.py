@@ -391,6 +391,66 @@ def identify_candidates(
 # Summary comparison table
 # ---------------------------------------------------------------------------
 
+def collect_pred_vs_actual(
+    dataset: pd.DataFrame,
+    all_results: dict,
+    feature_cols: list[str] = FEATURE_COLS,
+) -> dict[str, pd.DataFrame]:
+    """
+    Collect (actual, predicted) for each Group B target across all walk-forward folds.
+    Used for predicted-vs-actual scatter plots to show predictive power (or lack thereof).
+    Returns {target_key: DataFrame with cols [actual, predicted, Name, season, mlbID]}.
+    """
+    out = {}
+    seasons = sorted(dataset["season"].dropna().unique().astype(int))
+    if len(seasons) < MIN_TRAIN_SEASONS + 1:
+        return out
+
+    first_test = int(seasons[MIN_TRAIN_SEASONS - 1]) + 1
+    test_seasons = [s for s in seasons if s >= first_test]
+    models = _make_models()
+
+    for t in TARGETS:
+        if t["group"] != "B":
+            continue
+        target_col = t["col"] + "_next"
+        if target_col not in dataset.columns:
+            continue
+        res = all_results.get(t["key"], {})
+        best_name = res.get("_best", "Linear OLS")
+        best_model = models.get(best_name)
+        if best_model is None:
+            continue
+
+        rows = []
+        for ts in test_seasons:
+            train = dataset[(dataset["season"] < ts) & dataset[target_col].notna()].copy()
+            test = dataset[(dataset["season"] == ts) & dataset[target_col].notna()].copy()
+            if len(train) < 20 or len(test) < 5:
+                continue
+            X_train, feats = _feature_matrix(train, feature_cols)
+            X_test, _ = _feature_matrix(test, feats)
+            y_train = train[target_col].values
+            y_test = test[target_col].values
+
+            m = clone(best_model)
+            m.fit(X_train, y_train)
+            preds = m.predict(X_test)
+
+            for i in range(len(y_test)):
+                rows.append({
+                    "actual": float(y_test[i]),
+                    "predicted": float(preds[i]),
+                    "Name": test["Name"].iloc[i] if "Name" in test.columns else None,
+                    "season": int(ts),
+                    "mlbID": test["mlbID"].iloc[i] if "mlbID" in test.columns else None,
+                })
+
+        if rows:
+            out[t["key"]] = pd.DataFrame(rows)
+    return out
+
+
 def build_comparison_table(all_results: dict) -> pd.DataFrame:
     """Wide table: rows=targets, cols=models, values=RMSE (mean over folds)."""
     model_names = list(_make_models().keys())
@@ -553,6 +613,9 @@ def run_regression_pipeline(
             print(f"  {t['label']:25s}  unlucky={len(cands.get('unlucky', []))}  "
                   f"lucky={len(cands.get('lucky', []))}")
 
+    # Predicted vs actual for Group B (for scatter plots)
+    pred_vs_actual = collect_pred_vs_actual(dataset, all_results)
+
     output = {
         "dataset": dataset,
         "all_results": all_results,
@@ -560,6 +623,7 @@ def run_regression_pipeline(
         "projections": projections,
         "candidates": candidates,
         "quality_leaderboard": quality_lb,
+        "pred_vs_actual": pred_vs_actual,
         "test_season": test_season,
         "latest_season": latest_season,
     }
@@ -569,6 +633,21 @@ def run_regression_pipeline(
 
         comparison.to_parquet(PROCESSED_DIR / "regression_comparison.parquet", index=False)
         quality_lb.to_parquet(PROCESSED_DIR / "quality_leaderboard.parquet", index=False)
+
+        # This-year vs next-year luck (ERA − xERA) for direct scatter
+        luck_cols = ["era_vs_xera", "era_vs_xera_next", "Name", "season", "mlbID"]
+        luck_cols = [c for c in luck_cols if c in dataset.columns]
+        if len(luck_cols) >= 2:
+            luck_pairs = dataset[luck_cols].dropna(subset=["era_vs_xera", "era_vs_xera_next"])
+            if not luck_pairs.empty:
+                luck_pairs = luck_pairs.rename(columns={
+                    "era_vs_xera": "luck_this_year",
+                    "era_vs_xera_next": "luck_next_year",
+                })
+                luck_pairs.to_parquet(PROCESSED_DIR / "luck_this_vs_next.parquet", index=False)
+
+        for tkey, pva in pred_vs_actual.items():
+            pva.to_parquet(PROCESSED_DIR / f"pred_vs_actual_{tkey}.parquet", index=False)
 
         for t in TARGETS:
             tkey = t["key"]

@@ -28,7 +28,9 @@ import plotly.io as pio
 import json
 
 # Light chart backgrounds — avoids weird colors when Streamlit is in dark mode
+# Vibrant color palettes for charts
 pio.templates.default = "plotly_white"
+CLUSTER_COLORS = px.colors.qualitative.Set2 + px.colors.qualitative.Bold
 
 
 def _normalize_for_search(s) -> str:
@@ -52,11 +54,11 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; }
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
     h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
-    .stMetric { background: linear-gradient(135deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.01) 100%); 
-                padding: 0.85rem; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); }
-    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; color: #1a1a2e; }
-    .main-subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 1rem; }
-    div[data-testid="stExpander"] { border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; }
+    .stMetric { background: linear-gradient(135deg, #e8f4fd 0%, #fef3e2 50%, #f0fdf4 100%); 
+                padding: 0.85rem; border-radius: 10px; border-left: 4px solid #0ea5e9; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; color: #0f172a; }
+    .main-subtitle { color: #475569; font-size: 0.9rem; margin-bottom: 1rem; }
+    div[data-testid="stExpander"] { border: 1px solid rgba(14, 165, 233, 0.2); border-radius: 10px; background: linear-gradient(180deg, rgba(248,250,252,0.5) 0%, transparent 100%); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -154,7 +156,7 @@ def load_regression_outputs():
     # Per-target files
     for t in TARGETS_META:
         k = t["key"]
-        for prefix in ["proj_", "fi_", "cand_{}_unlucky", "cand_{}_lucky"]:
+        for prefix in ["proj_", "fi_", "cand_{}_unlucky", "cand_{}_lucky", "pred_vs_actual_"]:
             fname = prefix.format(k) if "{}" in prefix else f"{prefix}{k}"
             fp = PROCESSED_DIR / f"{fname}.parquet"
             if fp.exists():
@@ -163,6 +165,10 @@ def load_regression_outputs():
     ql = PROCESSED_DIR / "quality_leaderboard.parquet"
     if ql.exists():
         out["quality_leaderboard"] = pd.read_parquet(ql)
+    # This-year vs next-year luck (ERA − xERA)
+    luck_p = PROCESSED_DIR / "luck_this_vs_next.parquet"
+    if luck_p.exists():
+        out["luck_this_vs_next"] = pd.read_parquet(luck_p)
     return out
 
 
@@ -223,7 +229,7 @@ with st.sidebar:
         _year_range = (2020, 2025)
         all_years_mode = True
         selected_year = None
-        st.info("Due to Streamlit limitations, analyses are fixed to **2020–2025**.")
+        st.info("Locally, there is flexibility to run your own clustering algorithm over a dynamic number of years/clusters. Deployed view uses **2020–2025**.")
 
     st.divider()
 
@@ -374,8 +380,11 @@ def cluster_scatter(df, cluster_col, title, labels_map: dict | None = None):
         "Primary spin": primary_spin,
     })
     fig = px.scatter(plot_df, x="PC1", y="PC2", color="Cluster",
-                     hover_data=["Pitcher", "FB velo", "Primary spin"], title=title, opacity=0.7)
-    fig.update_layout(height=550, legend_title_text="Cluster · Archetype")
+                     hover_data=["Pitcher", "FB velo", "Primary spin"], title=title, opacity=0.85,
+                     color_discrete_sequence=CLUSTER_COLORS)
+    fig.update_traces(marker=dict(size=10, line=dict(width=1, color="white")))
+    fig.update_layout(height=550, legend_title_text="Cluster · Archetype",
+                      plot_bgcolor="rgba(248,250,252,0.5)", paper_bgcolor="white")
     return fig
 
 
@@ -477,35 +486,36 @@ def render_traditional_stats_card(row: pd.Series):
 
 st.title("⚾ Pitcher Analytics Dashboard")
 st.markdown(
-    "I'm an avid fantasy baseball player and always struggle with drafting pitchers—they're notoriously difficult "
-    "assets to value. Each throws different proportions of pitches at different speeds and breaks, with a bevy "
-    "of performance metrics. This dashboard is a step toward better understanding **1)** what types of pitchers "
-    "exist and how similar any two are, and **2)** how they perform relative to each other."
+    "I'm an avid fantasy baseball player, and drafting pitchers has always been challenging—they're difficult to value. "
+    "Each pitcher throws different pitches at different speeds and movement, with a wide range of performance metrics. "
+    "I built this to better understand **1)** what types of pitchers exist and how similar any two are, "
+    "and **2)** how they perform relative to each other (and how much of that is luck vs skill). "
+    "I plan to continuously augment it with new analyses as I think of them."
 )
 if _has_cache:
     st.caption("**Default view:** 2020–2025. Adjust year range in the sidebar.")
 else:
-    st.caption("**Streamlit deploy:** Analyses are fixed to 2020–2025. Year range controls require local pitch data.")
+    st.caption("**Deployed view:** 2020–2025. Locally, you can run your own clustering over any year range and number of clusters.")
 
 with st.expander("📖 Methodology & how this dashboard works", expanded=False):
     st.markdown("""
     **Why arsenal-based?**  
-    Pitchers are defined by *what they throw*, not just outcomes. Two guys with 3.50 ERA can be totally different — one survives on soft contact, another on strikeouts. I wanted to group by arsenal (velo, spin, movement, pitch mix) so comps and archetypes reflect *how* they pitch, not luck.
+    Pitchers are defined by *what they throw*, not just box scores. Two guys with 3.50 ERA can be totally different—one survives on weak contact, another on pure strikeouts. I wanted to group by arsenal (velo, spin, movement, pitch mix) so comps actually reflect *how* they pitch, not random variance.
 
     **Clustering**  
-    KMeans on scaled arsenal features: pitch usage (pct_*), velocity, spin, movement, spin axis per pitch type, extension, arm angle. **Why KMeans?** Simple, interpretable, and the cluster narratives (rule-based) give each group a readable label. Used for roster grouping and similarity.
+    KMeans on scaled arsenal features: usage, velo, spin, movement, extension, arm angle per pitch type. **Why KMeans?** Simple, interpretable, and the rule-based narratives give each cluster a human-readable label. Used for roster grouping and similarity.
 
     **Similarity search**  
-    Euclidean distance in the same feature space. **Why arsenal similarity and not stat similarity?** Stats are noisy; arsenals are more stable. Finding "pitchers who throw like X" is useful for comps and projecting roles.
+    Euclidean distance in the same feature space. **Why arsenal and not stats?** Stats are noisy; arsenals are more stable. "Pitchers who throw like X" is useful for comps and role projections.
 
     **Feature importance** (Regression tab)  
-    A Random Forest predicts **xERA** from arsenal features. **Why exclude hard-hit%, whiff%, etc.?** Those are *outcomes*. I wanted to know which *traits* (velo, spin, mix) drive expected performance — so we learn what to look for when scouting.
+    Random Forest predicts **xERA** from arsenal features. **Why exclude hard-hit%, whiff%, etc.?** Those are *outcomes*. I wanted to know which *traits* (velo, spin, mix) drive expected performance—so we know what to prioritise when evaluating pitchers.
 
-    **Null values & infrequent pitches**  
-    Pitches thrown &lt;1% are zeroed (not thrown). Median imputation for missing extension, command. **Why?** Keeps the feature space stable without inflating noise from one-off offerings.
+    **Null values & rare pitches**  
+    Pitches thrown &lt;1% get zeroed out. Median imputation for missing extension, command. Keeps things stable without blowing up noise from one-off offerings.
 
     **Data sources**  
-    Statcast (pitch-level), Baseball Reference (traditional stats), and model outputs from the pipeline.
+    Statcast (pitch-level), Baseball Reference, plus pipeline outputs.
     """)
 
 # Pitch type symbols — always visible on main dashboard
@@ -532,13 +542,14 @@ tab_overview, tab_cluster, tab_search, tab_rosters, tab_trad, tab_quality, tab_r
 # ===========================================================================
 
 with tab_overview:
+    st.header("Overview")
     st.markdown(
-        "The point of each tab is to answer specific questions: *What types of pitchers are out there?* "
+        "I built this dashboard so each tab answers a specific question: *What types of pitchers exist?* "
         "*How similar is pitcher X to pitcher Y?* *How do they perform—and how much is luck vs skill?*"
     )
     st.markdown(
-        "I built this because fantasy rankings often treat pitchers as interchangeable once you adjust for ERA and K. "
-        "They're not — arsenals vary wildly. These tabs let you explore that."
+        "I built it because fantasy rankings often treat pitchers as interchangeable once you adjust for ERA and K. "
+        "Arsenals vary widely—these tabs let you explore that."
     )
     st.markdown("### What each tab does")
     st.markdown(
@@ -560,14 +571,15 @@ with tab_overview:
 # ===========================================================================
 
 with tab_cluster:
+    st.header("Clustering")
     if not _clustering_available:
         st.info("Run `python run_pipeline.py` to generate clustering.")
     else:
         st.markdown(
-            "**What types of pitchers are out there?** KMeans partitions pitchers by arsenal features "
-            "(pitch mix, velo, spin, movement per pitch type). "
-            "**Why clustering?** Raw stats (ERA, K%) mix skill and luck. Grouping by *how* pitchers throw reveals stable archetypes — power fastball/slider guys vs sinker/changeup types vs breaking-ball specialists. "
-            "Which traits predict performance? See **Regression** tab."
+            "This tab shows the clustering I ran to answer: *What types of pitchers are out there?* "
+            "I used KMeans to partition pitchers by arsenal—pitch mix, velo, spin, movement per type. "
+            "I chose arsenal-based clustering because raw stats (ERA, K%) mix skill and luck together; grouping by *how* pitchers throw reveals stable archetypes—power fastball/slider types vs sinker/changeup specialists vs breaking-ball pitchers. "
+            "For which traits predict performance, see the **Regression** tab."
         )
         sel_col = "cluster_kmeans" if "cluster_kmeans" in df.columns else None
         if sel_col:
@@ -579,16 +591,21 @@ with tab_cluster:
                 if viz_type == "Cluster sizes":
                     sizes_viz = df[sel_col].value_counts().sort_index()
                     fig_bar = px.bar(x=sizes_viz.index.astype(str), y=sizes_viz.values,
-                                    labels={"x": "Cluster", "y": "Pitchers"}, title="KMeans · Cluster sizes")
-                    fig_bar.update_layout(height=400, margin=dict(t=30, b=30))
+                                    labels={"x": "Cluster", "y": "Pitchers"}, title="KMeans · Cluster sizes",
+                                    color=sizes_viz.values, color_continuous_scale="Teal")
+                    fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
+                    fig_bar.update_layout(height=400, margin=dict(t=30, b=30), coloraxis_showscale=False,
+                                         plot_bgcolor="rgba(248,250,252,0.5)")
                     st.plotly_chart(fig_bar, use_container_width=True)
                 else:
                     x_ax = "pca_0" if "pca_0" in df.columns else None
                     y_ax = "pca_1" if "pca_1" in df.columns else None
                     if x_ax and y_ax:
                         fig = px.scatter(df, x=x_ax, y=y_ax, color=df[sel_col].astype(str),
-                                        hover_data=["player_name"], title="KMeans clusters (PCA projection)")
-                        fig.update_layout(height=450)
+                                        hover_data=["player_name"], title="KMeans clusters (PCA projection)",
+                                        color_discrete_sequence=CLUSTER_COLORS)
+                        fig.update_traces(marker=dict(size=9, line=dict(width=1, color="white")))
+                        fig.update_layout(height=450, plot_bgcolor="rgba(248,250,252,0.5)")
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         fig = cluster_scatter(df, sel_col, "KMeans (PCA)", labels_map=labels_map)
@@ -617,19 +634,20 @@ with tab_cluster:
 # ===========================================================================
 
 with tab_search:
+    st.header("Similarity Search")
     if not _clustering_available:
         st.info("Run the clustering pipeline first to use similarity search.")
     else:
         league_avg_pct = compute_league_avg_pct(df)
 
         st.markdown(
-            "**How similar is pitcher X to pitcher Y?** Find pitchers with the most similar **Statcast arsenal profiles** "
-            "using per-pitch-type characteristics (velocity, spin, movement for FF, SI, SL, etc.) and pitch mix. "
-            "**Why arsenal-based comps?** Two pitchers can post similar ERAs for totally different reasons. Comparing arsenals finds true stylistic matches — useful for projecting roles or identifying similar buy-low targets."
+            "This tab lets you find pitchers similar to any one you pick: *How similar is pitcher X to pitcher Y?* "
+            "I compute similarity from **Statcast arsenal profiles**—velo, spin, movement per pitch type, plus pitch mix. "
+            "I went with arsenal-based comps because two pitchers can post similar ERAs for different reasons; arsenal similarity finds true stylistic matches—useful for role projections and identifying buy-low candidates."
         )
         st.markdown(
-            "Similarity is **not** blended averages — each pitch type is compared apples-to-apples (four-seamer vs four-seamer). "
-            "**Weighting:** `min(pct_i, pct_j)` so rarely thrown pitches contribute little to the distance."
+            "The similarity score compares each pitch type apples-to-apples (four-seamer vs four-seamer). "
+            "I use a `min(pct_i, pct_j)` weighting so rarely thrown pitches contribute little to the distance."
         )
         pitcher_list = sorted(df["player_name"].dropna().unique())
         selected = st.selectbox("Select a pitcher", pitcher_list)
@@ -773,9 +791,10 @@ with tab_search:
             _d = float(_dists[_i2])
             sim_pct = max(0, min(100, 100 * (1 - _d / 8)))  # 0–8 dist maps to 100–0% similar
             st.markdown(
-                f'<div style="text-align: center; padding: 1rem; background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%); '
-                f'border-radius: 8px; margin-bottom: 1rem;"><span style="font-size: 2.5rem; font-weight: bold; color: white;">'
-                f'{sim_pct:.0f}% similar</span><br><span style="color: rgba(255,255,255,0.9); font-size: 0.9rem;">'
+                f'<div style="text-align: center; padding: 1.25rem; background: linear-gradient(135deg, #0d9488 0%, #06b6d4 50%, #0ea5e9 100%); '
+                f'border-radius: 12px; margin-bottom: 1rem; box-shadow: 0 4px 12px rgba(6,182,212,0.3); border: 2px solid rgba(255,255,255,0.3);">'
+                f'<span style="font-size: 2.5rem; font-weight: bold; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">'
+                f'{sim_pct:.0f}% similar</span><br><span style="color: rgba(255,255,255,0.95); font-size: 0.9rem;">'
                 f'Arsenal distance: {_d:.3f} (lower = more similar)</span></div>',
                 unsafe_allow_html=True,
             )
@@ -860,6 +879,7 @@ with tab_search:
 # ===========================================================================
 
 with tab_rosters:
+    st.header("Performance by Cluster")
     if not _clustering_available:
         st.info("Run the clustering pipeline first to see cluster rosters and performance.")
     elif trends_df is None or (hasattr(trends_df, "__len__") and len(trends_df) == 0):
@@ -868,12 +888,11 @@ with tab_rosters:
         st.info("Run the pitching stats pipeline to see cluster performance by year.")
     else:
         st.markdown(
-            "**Which archetypes perform best?** See which pitchers belong to each cluster and which clusters had "
-            "the best performance (ERA, WHIP, SO9) in a given year."
+            "This tab answers: *Which archetypes perform best?* "
+            "Here you'll see which pitchers belong to each cluster and how they perform (ERA, WHIP, SO9) in a given year."
         )
         st.caption(
-            "**Why this matters:** Not all arsenals are created equal. If one cluster consistently outperforms others, "
-            "that suggests certain pitch profiles are more effective — useful for drafting or identifying undervalued types."
+            "I built this because not all arsenals are created equal—if one cluster consistently outperforms others, that suggests certain pitch profiles are more effective. Useful for drafting or identifying undervalued types."
         )
         _roster_year = st.selectbox(
             "Performance year",
@@ -938,14 +957,15 @@ with tab_rosters:
 # ===========================================================================
 
 with tab_trad:
+    st.header("Traditional & Expected Stats")
     st.markdown(
-        "Traditional stats (ERA, WHIP, K/9) from Baseball Reference, enriched with Statcast **expected** metrics "
-        "(xERA, est.wOBA). Compare actual vs expected to see contact quality."
+        "This tab shows traditional stats (ERA, WHIP, K/9) from Baseball Reference, which I've enriched with Statcast **expected** metrics (xERA, est.wOBA). "
+        "You can compare actual vs expected to see contact quality and luck."
     )
     st.markdown(
-        "**Why expected stats?** ERA is noisy — defense, sequencing, and park effects all matter. "
-        "xERA and est.wOBA strip that out; they measure what *should* have happened based on quality of contact. "
-        "A pitcher with ERA &gt; xERA was likely unlucky; ERA &lt; xERA suggests luck or overperformance. "
+        "I included expected stats because ERA is noisy—defense, sequencing, and park effects all matter. "
+        "xERA and est.wOBA strip that out; they measure what *should* have happened based on contact quality. "
+        "ERA &gt; xERA suggests unlucky; ERA &lt; xERA suggests lucky or overperformance. "
         "For deeper luck analysis, see the **Regression** tab."
     )
 
@@ -1010,7 +1030,7 @@ with tab_trad:
             pct_df = pd.DataFrame(list(pct_data.items()), columns=["Stat", "Percentile"])
             fig = px.bar(pct_df, x="Percentile", y="Stat", orientation="h",
                          range_x=[0, 100], color="Percentile",
-                         color_continuous_scale=["#d73027", "#fee090", "#1a9850"])
+                         color_continuous_scale=["#dc2626", "#fcd34d", "#16a34a"])
             fig.add_vline(x=50, line_dash="dash", line_color="gray",
                           annotation_text="League avg")
             fig.update_layout(coloraxis_showscale=False, height=350)
@@ -1073,22 +1093,23 @@ with tab_trad:
             fig_s = px.scatter(
                 scatter_src, x="xera", y="ERA", color="era_vs_xera",
                 hover_data=hover,
-                color_continuous_scale="RdYlGn_r",
+                color_continuous_scale="Portland",  # vibrant blue–red gradient
                 labels={"xera": "xERA (expected)", "ERA": "Actual ERA"},
                 title=f"ERA vs xERA — {season_label}",
             )
+            fig_s.update_traces(marker=dict(size=8, line=dict(width=0.5, color="white")))
             mn = min(scatter_src[["ERA", "xera"]].min())
             mx = max(scatter_src[["ERA", "xera"]].max())
             fig_s.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
                             line=dict(dash="dash", color="gray"))
             fig_s.add_annotation(x=mx * 0.92, y=mx * 0.92, text="ERA = xERA",
-                                  showarrow=False, font=dict(color="gray", size=11))
-            fig_s.update_layout(height=500, coloraxis_showscale=False)
+                                  showarrow=False, font=dict(color="#64748b", size=11))
+            fig_s.update_layout(height=500, coloraxis_showscale=False, plot_bgcolor="rgba(248,250,252,0.5)")
             st.plotly_chart(fig_s, use_container_width=True)
             st.caption(
                 "**Above diagonal** = ERA worse than xERA (unlucky or poor defense). "
                 "**Below diagonal** = ERA better than xERA (lucky or elite execution). "
-                "I use this to spot potential regression candidates — guys far from the line are worth a closer look."
+                "I use this chart to spot regression candidates—pitchers far from the line are worth a closer look."
             )
 
         # Luck distribution (ERA − xERA)
@@ -1102,13 +1123,15 @@ with tab_trad:
                     luck_src, x="era_minus_xera", nbins=40,
                     labels={"era_minus_xera": "ERA − xERA (positive = unlucky)"},
                     title="Luck distribution — who got lucky vs unlucky?",
+                    color_discrete_sequence=["#0ea5e9"],
                 )
-                fig_luck.add_vline(x=0, line_dash="dash", line_color="gray")
-                fig_luck.update_layout(height=350)
+                fig_luck.update_traces(marker_line_color="white", marker_line_width=1)
+                fig_luck.add_vline(x=0, line_dash="dash", line_color="#e11d48", line_width=2)
+                fig_luck.update_layout(height=350, plot_bgcolor="rgba(248,250,252,0.5)")
                 st.plotly_chart(fig_luck, use_container_width=True)
                 st.caption(
-                    "Positive = actual ERA exceeded expected (unlucky). Negative = outperformed expectations. "
-                    "**Why a histogram?** Shows how luck is distributed across the league — most cluster near zero, with tails of very lucky/unlucky seasons."
+                    "Positive = unlucky (ERA exceeded expected). Negative = outperformed expectations. "
+                    "I use a histogram here to show how luck is distributed across the league—most cluster near zero, with tails of very lucky/unlucky seasons."
                 )
 
         # K/9 vs ERA
@@ -1119,7 +1142,8 @@ with tab_trad:
                 title="Strikeout rate (K/9) vs ERA",
                 labels={"SO9": "K/9", "ERA": "ERA"},
             )
-            fig_k9.update_layout(height=400)
+            fig_k9.update_traces(marker=dict(size=8, symbol="diamond", color="#059669", line=dict(width=0.5, color="white")))
+            fig_k9.update_layout(height=400, plot_bgcolor="rgba(248,250,252,0.5)")
             st.plotly_chart(fig_k9, use_container_width=True)
             st.caption("Higher K/9 generally correlates with lower ERA.")
 
@@ -1144,6 +1168,7 @@ with tab_trad:
 # ===========================================================================
 
 with tab_quality:
+    st.header("Pitcher Quality Ranking")
     ql_raw = regression_outputs.get("quality_leaderboard")
     if ql_raw is None:
         st.warning(
@@ -1152,9 +1177,9 @@ with tab_quality:
         )
     else:
         st.markdown(
-            "A single 0–100 **quality score** from Savant percentile ranks (xERA, K%, whiff%, velo, BB%, hard-hit%). "
-            "**Why a composite?** No one stat tells the full story. xERA alone ignores strikeout upside; K% alone ignores contact quality. "
-            "I weight process-based metrics (xERA, whiff%) higher because they're more stable than outcomes (ERA). Customise weights below if you prefer a different emphasis."
+            "This tab contains a **quality score** (0–100) I generated from Savant percentile ranks (xERA, K%, whiff%, velo, BB%, hard-hit%). "
+            "I built it as a composite because no one stat tells the full story—xERA alone ignores strikeout upside; K% alone ignores contact quality. "
+            "I weight process-based metrics (xERA, whiff%) higher since they're more stable than outcomes. You can adjust the weights below if you prefer a different emphasis."
         )
         # ---- Weight configuration ----
         PCT_GOOD = ["pct_xera", "pct_k_percent", "pct_whiff_percent", "pct_fb_velocity"]
@@ -1220,9 +1245,9 @@ with tab_quality:
         # ---- Component correlations ----
         with st.expander("Which components best predict ERA / WHIP?", expanded=False):
             st.markdown(
-                "Pearson correlation of each Savant percentile with surface stats. "
-                "**Negative correlation with ERA** = component is a reliable quality signal. "
-                "Use this to guide your weight choices."
+                "I computed Pearson correlations of each Savant percentile with surface stats. "
+                "A negative correlation with ERA means the component is a reliable quality signal. "
+                "You can use this to guide your weight choices."
             )
             avail = [c for c in PCT_GOOD + PCT_BAD if c in ql.columns]
             targets = [c for c in ["ERA", "WHIP", "SO9"] if c in ql.columns]
@@ -1309,13 +1334,14 @@ with tab_quality:
 
         fig_dist = px.histogram(
             ql.dropna(subset=["quality_score"]), x="quality_score", nbins=20,
-            color_discrete_sequence=["#4393c3"],
+            color_discrete_sequence=["#7c3aed"],
             title="Distribution of Pitcher Quality Scores",
             labels={"quality_score": "Quality Score (0–100)"},
         )
-        fig_dist.add_vline(x=50, line_dash="dash", line_color="gray",
+        fig_dist.update_traces(marker_line_color="white", marker_line_width=1)
+        fig_dist.add_vline(x=50, line_dash="dash", line_color="#e11d48", line_width=2,
                            annotation_text="League avg (50)")
-        fig_dist.update_layout(height=300)
+        fig_dist.update_layout(height=300, plot_bgcolor="rgba(248,250,252,0.5)")
         st.plotly_chart(fig_dist, use_container_width=True)
 
 
@@ -1324,27 +1350,17 @@ with tab_quality:
 # ===========================================================================
 
 with tab_regression:
+    st.header("Regression Analysis")
     st.markdown("#### Can we predict luck?")
     st.markdown(
-        "The residual (ERA − xERA) measures how much a pitcher *outperformed* or *underperformed* "
-        "expectations — i.e. **luck**. Above zero = unlucky; below = lucky. "
-        "**Why does this matter for fantasy?** If we could predict luck, we'd know who's 'due' to regress. "
-        "I built this tab specifically to test that."
+        "**Luck** = ERA − xERA (how much a pitcher beat or missed expectations). Unlucky &gt; 0; lucky &lt; 0. "
+        "If we could predict next year's luck, we'd know who to buy low or sell high. I built this to test that."
     )
 
-    # Model explanations first
     col_ga, col_gb = st.columns(2)
-    col_ga.markdown(
-        "**Group A — Absolute performance**\n\n"
-        "Predict next-season ERA, wOBA, BA. Best predictors: xERA/est.wOBA/est.BA + strikeout rate. "
-        "**Why Group A?** Baseline — we expect these to be predictable. If they weren't, something would be wrong with the features."
-    )
-    col_gb.markdown(
-        "**Group B — Luck (residual) prediction**\n\n"
-        "Predict next year's ERA−xERA, wOBA−est.wOBA, BA−est.BA. "
-        "**Finding:** residuals are nearly unpredictable — luck resets year-over-year. "
-        "**Why this matters:** We can't reliably identify 'buy low on the unlucky' or 'sell high on the lucky' from these features. That's analytically important."
-    )
+    col_ga.markdown("**Group A:** Predict ERA, wOBA, BA. Sanity check—these should be predictable.")
+    col_gb.markdown("**Group B:** Predict next year's luck (ERA−xERA, etc.). The real question—can we beat \"regress to mean\"?")
+    st.caption("Green = best RMSE per row. Caveat: only 2 folds, small RMSE gaps—treat as suggestive.")
     st.divider()
 
     reg = regression_outputs
@@ -1359,8 +1375,8 @@ with tab_regression:
             st.divider()
             with st.expander("**Arsenal → xERA:** Which pitch traits predict expected performance?", expanded=True):
                 st.caption(
-                    "Random Forest: Statcast arsenal features (velo, spin, pitch mix, etc.) → xERA. "
-                    "**Why feature importance?** Tells us which arsenal traits actually matter for run prevention — so we know what to prioritise when evaluating pitchers."
+                    "I trained a Random Forest on Statcast arsenal features (velo, spin, pitch mix, etc.) to predict xERA. "
+                    "The feature importances below show which traits actually matter for run prevention—so we know what to prioritise when evaluating pitchers."
                 )
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
                 imp = arsenal_importances.head(top_n)
@@ -1368,8 +1384,10 @@ with tab_regression:
                     imp, x="importance", y="feature",
                     orientation="h",
                     labels={"importance": "Importance", "feature": "Feature"},
+                    color="importance", color_continuous_scale="Teal",
                 )
-                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), yaxis={"categoryorder": "total ascending"})
+                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), yaxis={"categoryorder": "total ascending"},
+                                         coloraxis_showscale=False, plot_bgcolor="rgba(248,250,252,0.5)")
                 st.plotly_chart(fig_arsenal, use_container_width=True)
     else:
         # --- Overview RMSE table ---
@@ -1389,37 +1407,68 @@ with tab_regression:
             use_container_width=True,
             height=260,
         )
-        st.caption(
-            f"Green = best per row. Mean RMSE over {n_folds} folds (expanding window). "
-            "Group A: xERA/wOBA/BA predict well. "
-            "**Group B (luck):** residuals nearly unpredictable — luck cannot be forecast."
-        )
+        st.caption("Green = best per row. Group A: models beat naive. Group B: naive wins or ties → models don't help.")
         try:
             _nf = int(n_folds) if n_folds != "" else 0
             if _nf <= 2:
-                st.caption(
-                    "**Why so few folds?** Walk-forward CV needs 3+ seasons to train before the first test. "
-                    "With 2020–2025, that leaves only 2 test folds (2023, 2024)."
-                )
+                st.caption("Only 2 folds: walk-forward needs 3+ train seasons before first test; 2020–2025 gives 2 test years.")
         except (ValueError, TypeError):
             pass
 
-        # Arsenal → xERA feature importance (after RMSE)
-        if arsenal_importances is not None:
-            st.divider()
-            with st.expander("**Arsenal → xERA:** Which pitch traits predict expected performance?", expanded=True):
-                st.caption(
-                    "Random Forest: Statcast arsenal features (velo, spin, pitch mix, etc.) → xERA. "
-                    "**Why feature importance?** Tells us which arsenal traits actually matter for run prevention — so we know what to prioritise when evaluating pitchers."
+        st.divider()
+
+        # This-year vs next-year luck (ERA − xERA): does luck persist within pitcher?
+        luck_key = "luck_this_vs_next"
+        if luck_key in reg and reg[luck_key] is not None and len(reg[luck_key]) > 10:
+            st.subheader("Does luck persist? This year vs next year (ERA − xERA)")
+            luck_df = reg[luck_key].copy()
+            luck_df = luck_df.dropna(subset=["luck_this_year", "luck_next_year"])
+            if len(luck_df) > 10:
+                fig_luck = px.scatter(
+                    luck_df, x="luck_this_year", y="luck_next_year",
+                    hover_data=["Name", "season"] if "Name" in luck_df.columns else ["season"],
+                    labels={"luck_this_year": "This year (ERA − xERA)", "luck_next_year": "Next year (ERA − xERA)"},
+                    title="Within pitcher: does this year's luck predict next year's?",
                 )
+                # Diagonal = luck persists (next year = this year)
+                mn = min(luck_df["luck_this_year"].min(), luck_df["luck_next_year"].min())
+                mx = max(luck_df["luck_this_year"].max(), luck_df["luck_next_year"].max())
+                fig_luck.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
+                                  line=dict(dash="dash", color="gray"))
+                fig_luck.add_hline(y=0, line_dash="dot", line_color="lightgray")
+                fig_luck.add_vline(x=0, line_dash="dot", line_color="lightgray")
+                fig_luck.update_traces(marker=dict(size=6, opacity=0.7))
+                fig_luck.update_layout(height=420, plot_bgcolor="rgba(248,250,252,0.5)")
+                st.plotly_chart(fig_luck, use_container_width=True)
+                from scipy.stats import pearsonr
+                corr, p_val = pearsonr(luck_df["luck_this_year"], luck_df["luck_next_year"])
+                sig = "significant" if p_val < 0.05 else "not significant"
+                st.info(
+                    f"**Takeaway:** Each point = one pitcher-season pair. "
+                    f"If luck persisted, points would follow the diagonal (unlucky this year → unlucky next). "
+                    f"A flat cloud = luck resets. Correlation: **r = {corr:.3f}** (p = {p_val:.4f}, {sig}). "
+                    f"{'Weak' if abs(corr) < 0.2 else 'Moderate'} year-over-year relationship. "
+                    f"\"Buy unlucky, sell lucky\" gets little support."
+                )
+            else:
+                st.caption("Luck pairs data has too few points. Re-run the pipeline.")
+        else:
+            st.caption("*Luck this-year vs next-year* scatter will appear here after you re-run the pipeline.")
+
+        st.divider()
+        if arsenal_importances is not None:
+            with st.expander("**Arsenal → xERA:** Which pitch traits predict expected performance?", expanded=False):
+                st.caption("RF on arsenal features → xERA. Importances show what actually drives run prevention.")
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
                 imp = arsenal_importances.head(top_n)
                 fig_arsenal = px.bar(
                     imp, x="importance", y="feature",
                     orientation="h",
                     labels={"importance": "Importance", "feature": "Feature"},
+                    color="importance", color_continuous_scale="Teal",
                 )
-                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), yaxis={"categoryorder": "total ascending"})
+                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), yaxis={"categoryorder": "total ascending"},
+                                         coloraxis_showscale=False, plot_bgcolor="rgba(248,250,252,0.5)")
                 st.plotly_chart(fig_arsenal, use_container_width=True)
 
         st.divider()
@@ -1542,7 +1591,7 @@ with tab_regression:
         st.divider()
         with st.expander("ℹ️ Methodology & Limitations"):
             st.markdown("""
-**Dataset:** Year-over-year pairs from 2015–2024 where a pitcher had Savant expected stats
+**Dataset:** Year-over-year pairs from 2020–2025 where a pitcher had Savant expected stats
 in year N and ≥20 IP in year N+1. ~2,400 paired observations.
 
 **Features (for all targets):** xERA, est.wOBA, est.BA, current-season residuals
@@ -1573,12 +1622,13 @@ strike batters out consistently outperform their contact-based expectations).
 # ===========================================================================
 
 with tab_data:
+    st.header("Raw & Intermediate Data")
     if not _clustering_available:
         st.info("No Statcast clustering data available yet.")
     else:
         st.markdown(
-            "Raw pitcher profiles and the exact feature matrix used for clustering. "
-            "**Why expose this?** If you want to replicate, extend, or sanity-check the analysis, the underlying data is here."
+            "This tab contains the raw pitcher profiles and the exact feature matrix I used for clustering. "
+            "I exposed it so you can replicate, extend, or sanity-check the analysis—the underlying data is all here."
         )
         st.subheader("Pitcher Profiles Dataset (Statcast)")
         st.write(f"{len(df)} pitchers · {len(df.columns)} features")
@@ -1593,9 +1643,8 @@ with tab_data:
             matrix_df = df[[c for c in id_cols if c in df.columns] + feat_cols].copy()
             matrix_df = matrix_df.round(3)
             st.caption(
-                f"Features used for clustering ({len(feat_cols)} columns). "
-                "**Preprocessing:** Values are standardized (StandardScaler) before clustering and similarity search. "
-                "Median imputation for missing values."
+                f"These are the features I used for clustering ({len(feat_cols)} columns). "
+                "I standardize values (StandardScaler) before clustering and similarity search, and use median imputation for missing values."
             )
             cluster_filter = st.selectbox(
                 "Filter by cluster",
