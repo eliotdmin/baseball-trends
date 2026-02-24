@@ -489,28 +489,23 @@ else:
 
 with st.expander("📖 Methodology & how this dashboard works", expanded=False):
     st.markdown("""
-    **Overview**  
-    This dashboard groups pitchers into similar *archetypes* based on their pitch arsenals (velocity, spin, movement, release, pitch mix).  
-    It then surfaces performance (ERA, xERA, etc.) and model-based regression predictions.
+    **Why arsenal-based?**  
+    Pitchers are defined by *what they throw*, not just outcomes. Two guys with 3.50 ERA can be totally different — one survives on soft contact, another on strikeouts. I wanted to group by arsenal (velo, spin, movement, pitch mix) so comps and archetypes reflect *how* they pitch, not luck.
 
     **Clustering**  
-    - **KMeans** on scaled arsenal features: pitch usage (pct_*), velocity, spin, movement (pfx_x/z, break_x/z), spin axis per pitch type, plus extension, arm angle, command spread. Used for roster grouping and similarity.
-
-    **Feature importance** (Regression tab)  
-    - A Random Forest predicts **xERA** from arsenal features (velo, spin, pitch mix, etc.). Importances show which traits predict expected performance. Outcome stats (e.g. hard-hit%) are excluded so we measure arsenal → performance, not performance → performance.
+    KMeans on scaled arsenal features: pitch usage (pct_*), velocity, spin, movement, spin axis per pitch type, extension, arm angle. **Why KMeans?** Simple, interpretable, and the cluster narratives (rule-based) give each group a readable label. Used for roster grouping and similarity.
 
     **Similarity search**  
-    - Euclidean distance in the same scaled feature space. Find pitchers with similar arsenals.
+    Euclidean distance in the same feature space. **Why arsenal similarity and not stat similarity?** Stats are noisy; arsenals are more stable. Finding "pitchers who throw like X" is useful for comps and projecting roles.
+
+    **Feature importance** (Regression tab)  
+    A Random Forest predicts **xERA** from arsenal features. **Why exclude hard-hit%, whiff%, etc.?** Those are *outcomes*. I wanted to know which *traits* (velo, spin, mix) drive expected performance — so we learn what to look for when scouting.
 
     **Null values & infrequent pitches**  
-    - Usage threshold 1%: pitches thrown &lt;1% are treated as not thrown (zeroed).  
-    - Median imputation for missing extension, command, etc.
+    Pitches thrown &lt;1% are zeroed (not thrown). Median imputation for missing extension, command. **Why?** Keeps the feature space stable without inflating noise from one-off offerings.
 
     **Data sources**  
-    Statcast (pitch-level), Baseball Reference (traditional stats), and model outputs from the regression pipeline.
-
-    **Default year range (2020–2025)**  
-    The pipeline and dashboard default to recent seasons for faster runs and more relevant fantasy data. Change the year range in the sidebar to see older seasons.
+    Statcast (pitch-level), Baseball Reference (traditional stats), and model outputs from the pipeline.
     """)
 
 # Pitch type symbols — always visible on main dashboard
@@ -541,6 +536,10 @@ with tab_overview:
         "The point of each tab is to answer specific questions: *What types of pitchers are out there?* "
         "*How similar is pitcher X to pitcher Y?* *How do they perform—and how much is luck vs skill?*"
     )
+    st.markdown(
+        "I built this because fantasy rankings often treat pitchers as interchangeable once you adjust for ERA and K. "
+        "They're not — arsenals vary wildly. These tabs let you explore that."
+    )
     st.markdown("### What each tab does")
     st.markdown(
         "| Tab | Focus |\n"
@@ -566,8 +565,9 @@ with tab_cluster:
     else:
         st.markdown(
             "**What types of pitchers are out there?** KMeans partitions pitchers by arsenal features "
-            "(pitch mix, velo, spin, movement per pitch type). Used for roster grouping. "
-            "Which features predict performance? See **Regression** tab."
+            "(pitch mix, velo, spin, movement per pitch type). "
+            "**Why clustering?** Raw stats (ERA, K%) mix skill and luck. Grouping by *how* pitchers throw reveals stable archetypes — power fastball/slider guys vs sinker/changeup types vs breaking-ball specialists. "
+            "Which traits predict performance? See **Regression** tab."
         )
         sel_col = "cluster_kmeans" if "cluster_kmeans" in df.columns else None
         if sel_col:
@@ -624,10 +624,12 @@ with tab_search:
 
         st.markdown(
             "**How similar is pitcher X to pitcher Y?** Find pitchers with the most similar **Statcast arsenal profiles** "
-            "using per-pitch-type characteristics (velocity, spin, movement for FF, SI, SL, etc.) "
-            "and pitch mix. Similarity is **not** based on blended averages — each pitch type "
-            "is compared apples-to-apples (e.g. four-seamer vs four-seamer). "
-            "**Weighting:** Pitch-type dimensions use `min(pct_i, pct_j)` so rarely thrown pitches contribute little to the distance."
+            "using per-pitch-type characteristics (velocity, spin, movement for FF, SI, SL, etc.) and pitch mix. "
+            "**Why arsenal-based comps?** Two pitchers can post similar ERAs for totally different reasons. Comparing arsenals finds true stylistic matches — useful for projecting roles or identifying similar buy-low targets."
+        )
+        st.markdown(
+            "Similarity is **not** blended averages — each pitch type is compared apples-to-apples (four-seamer vs four-seamer). "
+            "**Weighting:** `min(pct_i, pct_j)` so rarely thrown pitches contribute little to the distance."
         )
         pitcher_list = sorted(df["player_name"].dropna().unique())
         selected = st.selectbox("Select a pitcher", pitcher_list)
@@ -869,6 +871,10 @@ with tab_rosters:
             "**Which archetypes perform best?** See which pitchers belong to each cluster and which clusters had "
             "the best performance (ERA, WHIP, SO9) in a given year."
         )
+        st.caption(
+            "**Why this matters:** Not all arsenals are created equal. If one cluster consistently outperforms others, "
+            "that suggests certain pitch profiles are more effective — useful for drafting or identifying undervalued types."
+        )
         _roster_year = st.selectbox(
             "Performance year",
             options=sorted(trends_df["year"].dropna().unique().astype(int), reverse=True),
@@ -934,8 +940,13 @@ with tab_rosters:
 with tab_trad:
     st.markdown(
         "Traditional stats (ERA, WHIP, K/9) from Baseball Reference, enriched with Statcast **expected** metrics "
-        "(xERA, est.wOBA). Compare actual vs expected to see contact quality. "
-        "For luck/residual analysis and regression to the mean, see the **Regression** tab."
+        "(xERA, est.wOBA). Compare actual vs expected to see contact quality."
+    )
+    st.markdown(
+        "**Why expected stats?** ERA is noisy — defense, sequencing, and park effects all matter. "
+        "xERA and est.wOBA strip that out; they measure what *should* have happened based on quality of contact. "
+        "A pitcher with ERA &gt; xERA was likely unlucky; ERA &lt; xERA suggests luck or overperformance. "
+        "For deeper luck analysis, see the **Regression** tab."
     )
 
     # --- Load data for selected season(s) ---
@@ -1076,7 +1087,8 @@ with tab_trad:
             st.plotly_chart(fig_s, use_container_width=True)
             st.caption(
                 "**Above diagonal** = ERA worse than xERA (unlucky or poor defense). "
-                "**Below diagonal** = ERA better than xERA (lucky or elite execution)."
+                "**Below diagonal** = ERA better than xERA (lucky or elite execution). "
+                "I use this to spot potential regression candidates — guys far from the line are worth a closer look."
             )
 
         # Luck distribution (ERA − xERA)
@@ -1094,7 +1106,10 @@ with tab_trad:
                 fig_luck.add_vline(x=0, line_dash="dash", line_color="gray")
                 fig_luck.update_layout(height=350)
                 st.plotly_chart(fig_luck, use_container_width=True)
-                st.caption("Positive = actual ERA exceeded expected (unlucky). Negative = outperformed expectations.")
+                st.caption(
+                    "Positive = actual ERA exceeded expected (unlucky). Negative = outperformed expectations. "
+                    "**Why a histogram?** Shows how luck is distributed across the league — most cluster near zero, with tails of very lucky/unlucky seasons."
+                )
 
         # K/9 vs ERA
         k9_era = display_df.dropna(subset=["SO9", "ERA"])
@@ -1136,6 +1151,11 @@ with tab_quality:
             "```\npython run_pipeline.py\n```"
         )
     else:
+        st.markdown(
+            "A single 0–100 **quality score** from Savant percentile ranks (xERA, K%, whiff%, velo, BB%, hard-hit%). "
+            "**Why a composite?** No one stat tells the full story. xERA alone ignores strikeout upside; K% alone ignores contact quality. "
+            "I weight process-based metrics (xERA, whiff%) higher because they're more stable than outcomes (ERA). Customise weights below if you prefer a different emphasis."
+        )
         # ---- Weight configuration ----
         PCT_GOOD = ["pct_xera", "pct_k_percent", "pct_whiff_percent", "pct_fb_velocity"]
         PCT_BAD  = ["pct_bb_percent", "pct_hard_hit_percent"]
@@ -1307,21 +1327,23 @@ with tab_regression:
     st.markdown("#### Can we predict luck?")
     st.markdown(
         "The residual (ERA − xERA) measures how much a pitcher *outperformed* or *underperformed* "
-        "expectations — i.e. **luck**. Above zero = unlucky (ERA worse than contact quality suggested); "
-        "below = lucky. We test whether anything predicts *next year's* luck."
+        "expectations — i.e. **luck**. Above zero = unlucky; below = lucky. "
+        "**Why does this matter for fantasy?** If we could predict luck, we'd know who's 'due' to regress. "
+        "I built this tab specifically to test that."
     )
 
     # Model explanations first
     col_ga, col_gb = st.columns(2)
     col_ga.markdown(
         "**Group A — Absolute performance**\n\n"
-        "Predict next-season ERA, wOBA, BA. Best predictors: xERA/est.wOBA/est.BA + strikeout rate."
+        "Predict next-season ERA, wOBA, BA. Best predictors: xERA/est.wOBA/est.BA + strikeout rate. "
+        "**Why Group A?** Baseline — we expect these to be predictable. If they weren't, something would be wrong with the features."
     )
     col_gb.markdown(
         "**Group B — Luck (residual) prediction**\n\n"
         "Predict next year's ERA−xERA, wOBA−est.wOBA, BA−est.BA. "
         "**Finding:** residuals are nearly unpredictable — luck resets year-over-year. "
-        "We can't identify 'due for regression' from these features."
+        "**Why this matters:** We can't reliably identify 'buy low on the unlucky' or 'sell high on the lucky' from these features. That's analytically important."
     )
     st.divider()
 
@@ -1338,7 +1360,7 @@ with tab_regression:
             with st.expander("**Arsenal → xERA:** Which pitch traits predict expected performance?", expanded=True):
                 st.caption(
                     "Random Forest: Statcast arsenal features (velo, spin, pitch mix, etc.) → xERA. "
-                    "Higher = more predictive of run prevention."
+                    "**Why feature importance?** Tells us which arsenal traits actually matter for run prevention — so we know what to prioritise when evaluating pitchers."
                 )
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
                 imp = arsenal_importances.head(top_n)
@@ -1388,7 +1410,7 @@ with tab_regression:
             with st.expander("**Arsenal → xERA:** Which pitch traits predict expected performance?", expanded=True):
                 st.caption(
                     "Random Forest: Statcast arsenal features (velo, spin, pitch mix, etc.) → xERA. "
-                    "Higher = more predictive of run prevention."
+                    "**Why feature importance?** Tells us which arsenal traits actually matter for run prevention — so we know what to prioritise when evaluating pitchers."
                 )
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
                 imp = arsenal_importances.head(top_n)
@@ -1554,6 +1576,10 @@ with tab_data:
     if not _clustering_available:
         st.info("No Statcast clustering data available yet.")
     else:
+        st.markdown(
+            "Raw pitcher profiles and the exact feature matrix used for clustering. "
+            "**Why expose this?** If you want to replicate, extend, or sanity-check the analysis, the underlying data is here."
+        )
         st.subheader("Pitcher Profiles Dataset (Statcast)")
         st.write(f"{len(df)} pitchers · {len(df.columns)} features")
 

@@ -2,6 +2,8 @@
 
 An end-to-end baseball analytics platform that discovers pitcher archetypes, surfaces traditional and expected stats, predicts regression candidates, and scores pitcher quality — all through an interactive Streamlit dashboard.
 
+**Why?** Pitchers are hard to value. ERA mixes skill and luck; two guys with the same ERA can have wildly different arsenals. This project focuses on *how* pitchers throw (arsenal features) and *what should have happened* (expected stats), so we can separate signal from noise.
+
 ## What it does
 
 | Tab | What you get |
