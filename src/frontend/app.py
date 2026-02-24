@@ -18,12 +18,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src" / "backend"))
 
+import unicodedata
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 import json
+
+# Light chart backgrounds — avoids weird colors when Streamlit is in dark mode
+pio.templates.default = "plotly_white"
+
+
+def _normalize_for_search(s) -> str:
+    """Strip accents and lowercase for fuzzy search (e.g. José → jose)."""
+    if s is None or (isinstance(s, float) and pd.isna(s)):
+        return ""
+    nfd = unicodedata.normalize("NFD", str(s))
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn").lower()
 
 st.set_page_config(
     page_title="Pitcher Analytics",
@@ -165,6 +178,18 @@ regression_outputs = load_regression_outputs()
 
 _clustering_available = df is not None
 
+PITCH_SYMBOL_KEY = {
+    "FF": "Four-seam fastball",
+    "SI": "Sinker",
+    "SL": "Slider",
+    "CH": "Changeup",
+    "CU": "Curveball",
+    "FC": "Cutter",
+    "ST": "Sweeper",
+    "KC": "Knuckle-curve",
+    "FS": "Splitter",
+}
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
@@ -173,10 +198,10 @@ with st.sidebar:
     st.header("⚙️ Settings")
 
     st.subheader("Year range")
-    st.caption("Controls Stats, Similarity surface stats, and Re-run clustering.")
+    st.caption("Default: 2020–2025. All data, stats, and clustering use this range.")
     _avail_years = list(range(2015, 2026))
-    _start_yr = st.selectbox("Start year", _avail_years, index=0, key="start_year")
-    _end_yr = st.selectbox("End year", _avail_years, index=len(_avail_years) - 1, key="end_year")
+    _start_yr = st.selectbox("Start year", _avail_years, index=5, key="start_year")  # 2020
+    _end_yr = st.selectbox("End year", _avail_years, index=10, key="end_year")  # 2025
     if _start_yr > _end_yr:
         _end_yr, _start_yr = _start_yr, _end_yr
     all_years_mode = _start_yr < _end_yr
@@ -446,9 +471,12 @@ def render_traditional_stats_card(row: pd.Series):
 
 st.title("⚾ Pitcher Analytics Dashboard")
 st.markdown(
-    "Explore pitcher archetypes, traditional stats (ERA/WHIP/SO9), "
-    "expected metrics (xERA), and model-based regression predictions."
+    "I'm an avid fantasy baseball player and always struggle with drafting pitchers—they're notoriously difficult "
+    "assets to value. Each throws different proportions of pitches at different speeds and breaks, with a bevy "
+    "of performance metrics. This dashboard is a step toward better understanding **1)** what types of pitchers "
+    "exist and how similar any two are, and **2)** how they perform relative to each other."
 )
+st.caption("**Default view:** 2020–2025. Adjust year range in the sidebar.")
 
 with st.expander("📖 Methodology & how this dashboard works", expanded=False):
     st.markdown("""
@@ -471,7 +499,13 @@ with st.expander("📖 Methodology & how this dashboard works", expanded=False):
 
     **Data sources**  
     Statcast (pitch-level), Baseball Reference (traditional stats), and model outputs from the regression pipeline.
+
+    **Default year range (2020–2025)**  
+    The pipeline and dashboard default to recent seasons for faster runs and more relevant fantasy data. Change the year range in the sidebar to see older seasons.
     """)
+
+# Pitch type symbols — always visible on main dashboard
+st.caption("**Pitch symbols:** " + "  ·  ".join(f"{c} = {n}" for c, n in PITCH_SYMBOL_KEY.items()) + "")
 
 # ---------------------------------------------------------------------------
 # Tabs
@@ -493,19 +527,11 @@ tab_overview, tab_cluster, tab_search, tab_rosters, tab_trad, tab_quality, tab_r
 # Tab: Overview
 # ===========================================================================
 
-PITCH_SYMBOL_KEY = {
-    "FF": "Four-seam fastball",
-    "SI": "Sinker",
-    "SL": "Slider",
-    "CH": "Changeup",
-    "CU": "Curveball",
-    "FC": "Cutter",
-    "ST": "Sweeper",
-    "KC": "Knuckle-curve",
-    "FS": "Splitter",
-}
-
 with tab_overview:
+    st.markdown(
+        "The point of each tab is to answer specific questions: *What types of pitchers are out there?* "
+        "*How similar is pitcher X to pitcher Y?* *How do they perform—and how much is luck vs skill?*"
+    )
     st.markdown("### What each tab does")
     st.markdown(
         "| Tab | Focus |\n"
@@ -518,12 +544,7 @@ with tab_overview:
         "| **Regression** | Can we predict luck? ERA−xERA residual forecasting. Next-season projections. Arsenal → xERA feature importance. |\n"
         "| **Raw + intermediate Data** | Pitcher profiles, clustering feature matrix, exported parquet tables. |\n"
     )
-    st.divider()
-    st.markdown("### Pitch type symbols")
-    st.caption("Used throughout clustering, similarity, and feature importance.")
-    cols = st.columns(3)
-    for i, (code, name) in enumerate(PITCH_SYMBOL_KEY.items()):
-        cols[i % 3].markdown(f"**{code}** — {name}")
+    st.caption("Pitch symbols (FF, SI, SL, etc.) are in the sidebar — available on every tab.")
 
 
 # ===========================================================================
@@ -535,8 +556,9 @@ with tab_cluster:
         st.info("Run `python run_pipeline.py` to generate clustering.")
     else:
         st.markdown(
-            "**KMeans** partitions pitchers by arsenal features (pitch mix, velo, spin, movement per pitch type). "
-            "Used for roster grouping. Which features predict performance? See **Regression** tab."
+            "**What types of pitchers are out there?** KMeans partitions pitchers by arsenal features "
+            "(pitch mix, velo, spin, movement per pitch type). Used for roster grouping. "
+            "Which features predict performance? See **Regression** tab."
         )
         sel_col = "cluster_kmeans" if "cluster_kmeans" in df.columns else None
         if sel_col:
@@ -592,7 +614,7 @@ with tab_search:
         league_avg_pct = compute_league_avg_pct(df)
 
         st.markdown(
-            "Find pitchers with the most similar **Statcast arsenal profiles** "
+            "**How similar is pitcher X to pitcher Y?** Find pitchers with the most similar **Statcast arsenal profiles** "
             "using per-pitch-type characteristics (velocity, spin, movement for FF, SI, SL, etc.) "
             "and pitch mix. Similarity is **not** based on blended averages — each pitch type "
             "is compared apples-to-apples (e.g. four-seamer vs four-seamer). "
@@ -633,12 +655,19 @@ with tab_search:
                         if surf:
                             st.caption(f"Surface stats ({int(pt['year'])}): " + " · ".join(surf))
 
-            cluster_label = f"Cluster {cluster_id}" if cluster_col and cluster_id >= 0 else "—"
-            st.metric("Cluster Assignment", cluster_label)
-
+            if cluster_col and cluster_id >= 0:
+                arch = _parse_archetype(kmeans_summaries.get(str(cluster_id), "")) if (kmeans_summaries and str(cluster_id) in kmeans_summaries) else ""
+                cluster_label = f"Cluster {cluster_id}" + (f" · {arch}" if arch else "")
+            else:
+                cluster_label = "—"
+            st.markdown(
+                f'<div style="font-size: 1.4rem; font-weight: 600; margin: 0.5rem 0;">'
+                f'Cluster Assignment: {cluster_label}</div>',
+                unsafe_allow_html=True,
+            )
             if kmeans_summaries and cluster_col and str(cluster_id) in kmeans_summaries:
-                with st.expander("Cluster Narrative"):
-                    st.write(kmeans_summaries[str(cluster_id)])
+                st.markdown("**Cluster narrative**")
+                st.write(kmeans_summaries[str(cluster_id)])
 
             st.divider()
             st.subheader(f"10 Most Similar Pitchers to {selected}")
@@ -828,8 +857,8 @@ with tab_rosters:
         st.info("Run the pitching stats pipeline to see cluster performance by year.")
     else:
         st.markdown(
-            "See which pitchers belong to each cluster and which clusters had the best "
-            "performance (ERA, WHIP, SO9) in a given year."
+            "**Which archetypes perform best?** See which pitchers belong to each cluster and which clusters had "
+            "the best performance (ERA, WHIP, SO9) in a given year."
         )
         _roster_year = st.selectbox(
             "Performance year",
@@ -895,9 +924,9 @@ with tab_rosters:
 
 with tab_trad:
     st.markdown(
-        "Traditional stats (ERA, WHIP, K/9) from Baseball Reference, "
-        "enriched with Statcast **xERA** (expected ERA based on quality of contact). "
-        "The gap between ERA and xERA separates luck from true skill."
+        "Traditional stats (ERA, WHIP, K/9) from Baseball Reference, enriched with Statcast **expected** metrics "
+        "(xERA, est.wOBA). Compare actual vs expected to see contact quality. "
+        "For luck/residual analysis and regression to the mean, see the **Regression** tab."
     )
 
     # --- Load data for selected season(s) ---
@@ -922,12 +951,20 @@ with tab_trad:
     year_range = f"{pitching_df[year_col].min()}–{pitching_df[year_col].max()}" if year_col else season_label
     st.caption(f"{n_rows} pitcher-seasons · {year_range} · min 20 IP")
 
-    # --- Search ---
-    search_name = st.text_input("Search pitcher name")
+    # --- Search (selectbox = autocomplete) ---
+    all_names = sorted(pitching_df["Name"].dropna().unique().tolist())
+    search_options = [""] + all_names if all_names else [""]
+    search_name = st.selectbox(
+        "Search pitcher name",
+        options=search_options,
+        format_func=lambda x: "(select or type to search...)" if x == "" else x,
+        key="trad_search",
+    )
     display_df = pitching_df.copy()
     if search_name:
+        _norm_q = _normalize_for_search(search_name)
         display_df = display_df[
-            display_df["Name"].str.contains(search_name, case=False, na=False)
+            display_df["Name"].apply(lambda x: _norm_q in _normalize_for_search(x))
         ]
 
     # --- Individual pitcher deep-dive (single match) ---
@@ -959,30 +996,35 @@ with tab_trad:
             fig.update_layout(coloraxis_showscale=False, height=350)
             st.plotly_chart(fig, use_container_width=True)
 
-        # Year-over-year trends for this pitcher
+        # Year-over-year: Actual vs Expected
         if trends_df is not None:
             mlb_id = row.get("mlbID")
             if mlb_id:
                 pitcher_trend = trends_df[trends_df["mlbID"] == mlb_id].sort_values("year")
                 if len(pitcher_trend) >= 2:
-                    st.subheader("Year-over-Year Trends")
-                    trend_cols = [c for c in ["ERA", "WHIP", "SO9"] if c in pitcher_trend.columns]
-                    fig_trend = px.line(
-                        pitcher_trend.melt(id_vars=["year"], value_vars=trend_cols),
-                        x="year", y="value", color="variable", markers=True,
-                        title=f"{row['Name']} — ERA / WHIP / K/9 by Season",
-                    )
-                    fig_trend.update_layout(height=400, yaxis_title="Value")
-                    st.plotly_chart(fig_trend, use_container_width=True)
-
-                    if _insights_available:
-                        for stat in trend_cols:
-                            note = build_trend_annotation(
-                                pitcher_trend[stat].tolist(),
-                                pitcher_trend["year"].tolist(), stat,
-                            )
-                            if note:
-                                st.caption(f"**{stat}**: {note}")
+                    st.subheader("Actual vs Expected (by season)")
+                    # ERA vs xERA
+                    era_cols = [c for c in ["ERA", "xera"] if c in pitcher_trend.columns]
+                    if len(era_cols) == 2:
+                        melt_era = pitcher_trend.melt(id_vars=["year"], value_vars=era_cols, var_name="metric", value_name="value")
+                        melt_era["metric"] = melt_era["metric"].map({"ERA": "Actual ERA", "xera": "Expected ERA (xERA)"})
+                        fig_era = px.line(
+                            melt_era, x="year", y="value", color="metric", markers=True,
+                            title=f"{row['Name']} — ERA vs xERA",
+                        )
+                        fig_era.update_layout(height=380, yaxis_title="ERA")
+                        st.plotly_chart(fig_era, use_container_width=True)
+                    # wOBA vs est.wOBA (savant_woba, est_woba)
+                    woba_cols = [c for c in ["savant_woba", "est_woba"] if c in pitcher_trend.columns]
+                    if len(woba_cols) == 2:
+                        melt_woba = pitcher_trend.melt(id_vars=["year"], value_vars=woba_cols, var_name="metric", value_name="value")
+                        melt_woba["metric"] = melt_woba["metric"].map({"savant_woba": "Actual wOBA", "est_woba": "Expected wOBA"})
+                        fig_woba = px.line(
+                            melt_woba, x="year", y="value", color="metric", markers=True,
+                            title=f"{row['Name']} — wOBA vs est.wOBA",
+                        )
+                        fig_woba.update_layout(height=380, yaxis_title="wOBA")
+                        st.plotly_chart(fig_woba, use_container_width=True)
 
     elif search_name and len(display_df) > 1 and year_col and all_years_mode:
         # Multiple results in all-years mode: show per-pitcher trend sparklines
@@ -1220,8 +1262,8 @@ with tab_quality:
         search_q = st.text_input("Search pitcher", key="quality_search")
         display_ql = ql.copy()
         if search_q:
-            display_ql = display_ql[
-                display_ql["Name"].str.contains(search_q, case=False, na=False)]
+            _nq = _normalize_for_search(search_q)
+            display_ql = display_ql[display_ql["Name"].apply(lambda x: _nq in _normalize_for_search(x))]
         min_score = st.slider("Minimum quality score", 0, 100, 0, 5)
         display_ql = display_ql[display_ql["quality_score"].fillna(0) >= min_score]
 
@@ -1530,9 +1572,8 @@ with tab_data:
         search_name = st.text_input("Filter by name", key="raw_search")
         display_df = df.copy()
         if search_name:
-            display_df = display_df[
-                display_df["player_name"].str.contains(search_name, case=False, na=False)
-            ]
+            _nq = _normalize_for_search(search_name)
+            display_df = display_df[display_df["player_name"].apply(lambda x: _nq in _normalize_for_search(x))]
 
         st.dataframe(display_df, use_container_width=True, height=500)
         csv = display_df.to_csv(index=False)

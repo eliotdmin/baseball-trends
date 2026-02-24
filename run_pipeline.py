@@ -30,9 +30,9 @@ def run_clustering_step(args):
     if args.cluster_years is not None:
         profiles = run_preprocessing(years=args.cluster_years, min_pitches=args.min_pitches)
     else:
-        # Default: full range (2015–2025) to use all available data
+        # Default: 2020–2025 (recent, more relevant for fantasy)
         profiles = run_preprocessing(
-            start_date=args.start or "2015-03-01",
+            start_date=args.start or "2020-03-01",
             end_date=args.end or "2025-11-30",
             min_pitches=args.min_pitches,
         )
@@ -83,13 +83,14 @@ def run_regression_step(args):
 def main():
     parser = argparse.ArgumentParser(description="Pitcher Analytics Pipeline")
     parser.add_argument("--cluster-years", nargs="+", type=int, default=None,
-                        help="Year(s) for Statcast profiles (default: all 2015-2025)")
+                        help="Year(s) for Statcast profiles (default: 2020-2025)")
     parser.add_argument("--start", default=None)
     parser.add_argument("--end", default=None)
     parser.add_argument("--min-pitches", type=int, default=200)
     parser.add_argument("--k", type=int, default=5, help="KMeans clusters")
     parser.add_argument("--skip-clustering", action="store_true")
-    parser.add_argument("--years", nargs="+", type=int, default=list(range(2015, 2026)))
+    parser.add_argument("--years", nargs="+", type=int, default=list(range(2020, 2026)),
+                        help="Years for pitching stats & regression (default: 2020-2025)")
     parser.add_argument("--min-ip", type=float, default=20.0)
     parser.add_argument("--skip-pitching-stats", action="store_true")
     parser.add_argument("--skip-regression", action="store_true")
