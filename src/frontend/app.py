@@ -222,6 +222,8 @@ with st.sidebar:
 
     with st.expander("Re-run clustering", expanded=False):
         st.caption("KMeans on arsenal features. ~30–60s. Uses year range above.")
+        if not _has_cache:
+            st.caption("Pre-built clustering is used. Re-run requires local Statcast pitch data.")
         if _has_cache:
             st.caption(f"Cache: {_cached_years[0] or '?'}–{_cached_years[-1] or '?'} ({len(_cached_dates)} days)")
             _k_clust = st.slider("KMeans k", 3, 12, 5, key="sidebar_k")
@@ -249,7 +251,7 @@ with st.sidebar:
                     except Exception as _e:
                         st.error(f"Failed: {_e}")
         else:
-            st.info("No pitch cache. Run `python src/backend/download_statcast.py` first.")
+            st.info("No pitch cache — re-run disabled. Clustering uses pre-built data from your repo.")
 
 # ---------------------------------------------------------------------------
 # Insights helpers
