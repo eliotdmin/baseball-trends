@@ -1,9 +1,7 @@
 {
-  "0": "Cluster 0 (150 pitchers) \u2014 Splitter Specialist: average FF velocity (94.4 mph, +0.7 vs. league) and league-average FF spin (2254 rpm, -16). Arsenal: leans heavily on the splitter (17%, +15%), and avoids the changeup (-8%).",
-  "1": "Cluster 1 (193 pitchers) \u2014 Below-Average Velocity Arm: below-average FF velocity (92.3 mph, -1.5 vs. league) and league-average FF spin (2215 rpm, -54). Arsenal: shows a balanced mix led by the four-seamer (30%) and sinker (19%).",
-  "2": "Cluster 2 (352 pitchers) \u2014 Mid-Velocity Craftsman: average FF velocity (94.2 mph, +0.4 vs. league) and league-average FF spin (2282 rpm, +13). Arsenal: shows a balanced mix led by the four-seamer (30%) and slider (25%).",
-  "3": "Cluster 3 (101 pitchers) \u2014 Knuckle-Curve Specialist: average FF velocity (93.9 mph, +0.1 vs. league) and league-average FF spin (2284 rpm, +15). Arsenal: leans heavily on the knuckle-curve (18%, +17%), and avoids the curveball (-6%).",
-  "4": "Cluster 4 (73 pitchers) \u2014 Sinker Specialist: average SI velocity (93.2 mph, -0.5 vs. league) and below-average SI spin (2158 rpm, -111 vs. league). Arsenal: leans heavily on the sinker (44%, +29%), cutter (16%, +9%), and avoids the four-seamer (-34%).",
-  "5": "Cluster 5 (293 pitchers) \u2014 Mid-Velocity Four-Seamer Arm: average FF velocity (94.0 mph, +0.2 vs. league) and league-average FF spin (2278 rpm, +9). Arsenal: leans heavily on the four-seamer (50%, +16%), and avoids the sinker (-15%).",
-  "6": "Cluster 6 (185 pitchers) \u2014 Mid-Velocity Sweeper Arm: average FF velocity (93.7 mph, -0.1 vs. league) and league-average FF spin (2294 rpm, +25). Arsenal: leans heavily on the sweeper (17%, +12%), cutter (13%, +6%), and avoids the slider (-13%)."
+  "0": "Cluster 0 (102 pitchers) \u2014 Knuckle-Curve Specialist: average FF velocity (93.9 mph, +0.1 vs. league) and league-average FF spin (2284 rpm, +15). Arsenal: leans heavily on the knuckle-curve (18%, +17%), and avoids the curveball (-6%).",
+  "1": "Cluster 1 (591 pitchers) \u2014 Mid-Velocity Slider Arm: average FF velocity (93.9 mph, +0.1 vs. league) and league-average FF spin (2275 rpm, +6). Arsenal: leans heavily on the slider (26%, +8%), and avoids the cutter (-7%).",
+  "2": "Cluster 2 (154 pitchers) \u2014 Splitter Specialist: average FF velocity (94.4 mph, +0.6 vs. league) and league-average FF spin (2253 rpm, -16). Arsenal: leans heavily on the splitter (17%, +15%), and avoids the changeup (-8%).",
+  "3": "Cluster 3 (72 pitchers) \u2014 Sinker Specialist: average SI velocity (93.2 mph, -0.6 vs. league) and league-average SI spin (2160 rpm, -109). Arsenal: leans heavily on the sinker (43%, +28%), cutter (16%, +9%), and avoids the four-seamer (-34%).",
+  "4": "Cluster 4 (428 pitchers) \u2014 Mid-Velocity Cutter Arm: average FF velocity (93.4 mph, -0.4 vs. league) and league-average FF spin (2264 rpm, -5). Arsenal: leans heavily on the cutter (15%, +8%), and avoids the slider (-9%)."
 }
