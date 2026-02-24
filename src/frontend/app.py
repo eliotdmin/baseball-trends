@@ -1245,9 +1245,11 @@ with tab_quality:
         # ---- Component correlations ----
         with st.expander("Which components best predict ERA / WHIP?", expanded=False):
             st.markdown(
-                "I computed Pearson correlations of each Savant percentile with surface stats. "
-                "A negative correlation with ERA means the component is a reliable quality signal. "
-                "You can use this to guide your weight choices."
+                "These are **Savant percentiles** (0–100): higher = better for \"good\" components (xERA, K%, whiff%, velo), "
+                "and for \"bad\" components (BB%, hard-hit%) the score is inverted so higher = better. "
+                "**ERA / WHIP:** We want *negative* correlation—pitchers with higher percentiles (better) should have lower ERA/WHIP. "
+                "**SO9:** We want *positive* correlation—better pitchers should have higher K/9. "
+                "So strong negative with ERA/WHIP and strong positive with SO9 = reliable quality signal."
             )
             avail = [c for c in PCT_GOOD + PCT_BAD if c in ql.columns]
             targets = [c for c in ["ERA", "WHIP", "SO9"] if c in ql.columns]
@@ -1271,8 +1273,8 @@ with tab_quality:
                     use_container_width=True,
                 )
                 st.caption(
-                    "Components with strong negative ERA/WHIP correlation and strong positive "
-                    "SO9 correlation deserve higher weights. xERA and K% typically dominate."
+                    "Higher weight components that strongly predict quality: negative with ERA/WHIP "
+                    "(better percentile → lower ERA), positive with SO9 (better → more Ks). xERA and K% typically dominate."
                 )
 
         # ---- Cluster surface stats ----
