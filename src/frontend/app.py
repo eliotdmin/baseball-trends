@@ -197,20 +197,7 @@ PITCH_SYMBOL_KEY = {
 with st.sidebar:
     st.header("⚙️ Settings")
 
-    st.subheader("Year range")
-    st.caption("Default: 2020–2025. All data, stats, and clustering use this range.")
-    _avail_years = list(range(2015, 2026))
-    _start_yr = st.selectbox("Start year", _avail_years, index=5, key="start_year")  # 2020
-    _end_yr = st.selectbox("End year", _avail_years, index=10, key="end_year")  # 2025
-    if _start_yr > _end_yr:
-        _end_yr, _start_yr = _start_yr, _end_yr
-    all_years_mode = _start_yr < _end_yr
-    selected_year = _start_yr if _start_yr == _end_yr else None
-    _year_range = (_start_yr, _end_yr)
-
-    st.divider()
-
-    # --- Clustering (uses same year range) ---
+    # Check if we have local pitch cache (Streamlit Cloud typically does not)
     _sc_root = ROOT / "data" / "statcast_pitches"
     _cached_dates = sorted(
         p.parent.name.replace("game_date=", "")
@@ -218,7 +205,27 @@ with st.sidebar:
     ) if _sc_root.exists() else []
     _cached_years = sorted(set(d[:4] for d in _cached_dates)) if _cached_dates else []
     _has_cache = len(_cached_dates) >= 7
-    _clust_years = [y for y in range(_start_yr, _end_yr + 1) if str(y) in _cached_years]
+
+    if _has_cache:
+        st.subheader("Year range")
+        st.caption("Controls data range for stats, similarity, and re-run clustering.")
+        _avail_years = list(range(2015, 2026))
+        _start_yr = st.selectbox("Start year", _avail_years, index=5, key="start_year")
+        _end_yr = st.selectbox("End year", _avail_years, index=10, key="end_year")
+        if _start_yr > _end_yr:
+            _end_yr, _start_yr = _start_yr, _end_yr
+        all_years_mode = _start_yr < _end_yr
+        selected_year = _start_yr if _start_yr == _end_yr else None
+        _year_range = (_start_yr, _end_yr)
+        _clust_years = [y for y in range(_start_yr, _end_yr + 1) if str(y) in _cached_years]
+    else:
+        # No pitch cache = deployed (Streamlit Cloud) or minimal local setup
+        _year_range = (2020, 2025)
+        all_years_mode = True
+        selected_year = None
+        st.info("Due to Streamlit limitations, analyses are fixed to **2020–2025**.")
+
+    st.divider()
 
     # Only show Re-run clustering when local pitch cache exists (not on Streamlit Cloud)
     if _has_cache:
@@ -475,7 +482,10 @@ st.markdown(
     "of performance metrics. This dashboard is a step toward better understanding **1)** what types of pitchers "
     "exist and how similar any two are, and **2)** how they perform relative to each other."
 )
-st.caption("**Default view:** 2020–2025. Adjust year range in the sidebar.")
+if _has_cache:
+    st.caption("**Default view:** 2020–2025. Adjust year range in the sidebar.")
+else:
+    st.caption("**Streamlit deploy:** Analyses are fixed to 2020–2025. Year range controls require local pitch data.")
 
 with st.expander("📖 Methodology & how this dashboard works", expanded=False):
     st.markdown("""
@@ -1362,6 +1372,15 @@ with tab_regression:
             "Group A: xERA/wOBA/BA predict well. "
             "**Group B (luck):** residuals nearly unpredictable — luck cannot be forecast."
         )
+        try:
+            _nf = int(n_folds) if n_folds != "" else 0
+            if _nf <= 2:
+                st.caption(
+                    "**Why so few folds?** Walk-forward CV needs 3+ seasons to train before the first test. "
+                    "With 2020–2025, that leaves only 2 test folds (2023, 2024)."
+                )
+        except (ValueError, TypeError):
+            pass
 
         # Arsenal → xERA feature importance (after RMSE)
         if arsenal_importances is not None:
