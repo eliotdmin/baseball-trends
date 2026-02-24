@@ -220,11 +220,10 @@ with st.sidebar:
     _has_cache = len(_cached_dates) >= 7
     _clust_years = [y for y in range(_start_yr, _end_yr + 1) if str(y) in _cached_years]
 
-    with st.expander("Re-run clustering", expanded=False):
-        st.caption("KMeans on arsenal features. ~30–60s. Uses year range above.")
-        if not _has_cache:
-            st.caption("Pre-built clustering is used. Re-run requires local Statcast pitch data.")
-        if _has_cache:
+    # Only show Re-run clustering when local pitch cache exists (not on Streamlit Cloud)
+    if _has_cache:
+        with st.expander("Re-run clustering", expanded=False):
+            st.caption("KMeans on arsenal features. ~30–60s. Uses year range above.")
             st.caption(f"Cache: {_cached_years[0] or '?'}–{_cached_years[-1] or '?'} ({len(_cached_dates)} days)")
             _k_clust = st.slider("KMeans k", 3, 12, 5, key="sidebar_k")
 
@@ -250,8 +249,6 @@ with st.sidebar:
                         st.rerun()
                     except Exception as _e:
                         st.error(f"Failed: {_e}")
-        else:
-            st.info("No pitch cache — re-run disabled. Clustering uses pre-built data from your repo.")
 
 # ---------------------------------------------------------------------------
 # Insights helpers
