@@ -478,10 +478,17 @@ def _fallback_summary(
                        f"({hh_diff:+.1%} {direction} league avg).")
 
     archetype = _archetype_name(velo_z, spin_z, above, pitch_names)
-
+    bullets = [
+        f"• {velo_desc}",
+        f"• {spin_desc}",
+        f"• Arsenal: {pitch_mix_text}",
+    ]
+    if ext_text:
+        bullets.append(f"• {ext_text.strip()}")
+    if hh_text:
+        bullets.append(f"• {hh_text.strip()}")
     return (
-        f"Cluster {cluster_id} ({n} pitchers) — {archetype}: {velo_desc} "
-        f"and {spin_desc}. Arsenal: {pitch_mix_text}.{ext_text}{hh_text}"
+        f"Cluster {cluster_id} ({n} pitchers) — {archetype}:\n" + "\n".join(bullets)
     )
 
 

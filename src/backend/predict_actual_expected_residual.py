@@ -470,35 +470,54 @@ def build_comparison_table(all_results: dict) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Quality score (unchanged from before)
+# Quality score (z-scored raw stats)
 # ---------------------------------------------------------------------------
 
-QUALITY_SCORE_WEIGHTS = {
-    "good": {
-        "pct_xera": 0.30, "pct_k_percent": 0.20,
-        "pct_whiff_percent": 0.15, "pct_fb_velocity": 0.10,
-    },
-    "bad": {
-        "pct_bb_percent": 0.15, "pct_hard_hit_percent": 0.10,
-    },
-}
+# Z-score components: (col, lower_better) — lower_better=True means negate z for "good"
+ZSCORE_COLS = [
+    ("xera", True),        # lower better
+    ("SO9", False),        # higher better
+    ("est_woba", True),    # lower better
+    ("bb_rate", True),     # BB/BF, lower better
+    ("brl_percent", True), # lower better (barrels allowed)
+]
+ZSCORE_WEIGHTS = {"xera": 0.30, "SO9": 0.25, "est_woba": 0.20, "bb_rate": 0.15, "brl_percent": 0.10}
 GRADE_THRESHOLDS = [
     (90, "A+"), (80, "A"), (70, "B+"), (60, "B"),
     (50, "C+"), (40, "C"), (30, "D"), (0,  "F"),
 ]
 
 
-def compute_pitcher_quality_score(row: pd.Series) -> Optional[float]:
-    ws, tw = 0.0, 0.0
-    for col, w in QUALITY_SCORE_WEIGHTS["good"].items():
+def _zscore(series: pd.Series) -> pd.Series:
+    m = series.mean()
+    s = series.std()
+    if s is None or s == 0 or pd.isna(s):
+        return series - m
+    return (series - m) / s
+
+
+def compute_pitcher_quality_score_zscore(row: pd.Series, z_mean: dict, z_std: dict) -> Optional[float]:
+    """Weighted sum of z-scored components (normalized so higher = better)."""
+    total = 0.0
+    total_w = 0.0
+    for col, lower_better in ZSCORE_COLS:
         v = row.get(col)
-        if pd.notna(v):
-            ws += float(v) * w; tw += w
-    for col, w in QUALITY_SCORE_WEIGHTS["bad"].items():
-        v = row.get(col)
-        if pd.notna(v):
-            ws += (100.0 - float(v)) * w; tw += w
-    return round(ws / tw, 1) if tw >= 0.3 else None
+        w = ZSCORE_WEIGHTS.get(col, 0)
+        if pd.isna(v) or w <= 0 or col not in z_mean:
+            continue
+        mu, s = z_mean[col], z_std[col]
+        if s is None or s == 0 or pd.isna(s):
+            z = 0.0
+        else:
+            z = (float(v) - mu) / s
+        if lower_better:
+            z = -z  # invert so higher z = better
+        total += z * w
+        total_w += w
+    if total_w < 0.2:
+        return None
+    raw = total / total_w
+    return round(raw, 2)
 
 
 def quality_grade(score: Optional[float]) -> str:
@@ -510,35 +529,64 @@ def quality_grade(score: Optional[float]) -> str:
     return "F"
 
 
-PCT_COLS = list(QUALITY_SCORE_WEIGHTS["good"].keys()) + list(QUALITY_SCORE_WEIGHTS["bad"].keys())
-
-
 def build_quality_leaderboard(df: pd.DataFrame, min_ip: float = 20.0) -> pd.DataFrame:
     q = df[df["IP"].fillna(0) >= min_ip].copy()
-    q["quality_score"] = q.apply(compute_pitcher_quality_score, axis=1)
+    if "BF" in q.columns and "BB" in q.columns:
+        q["bb_rate"] = q["BB"] / q["BF"].replace(0, np.nan)
+    elif "bb_rate" not in q.columns:
+        q["bb_rate"] = np.nan
+    for col, _ in ZSCORE_COLS:
+        if col not in q.columns:
+            q[col] = np.nan
+    z_mean, z_std = {}, {}
+    for col, _ in ZSCORE_COLS:
+        s = q[col].dropna()
+        if len(s) >= 5:
+            z_mean[col] = float(s.mean())
+            z_std[col] = float(s.std()) if s.std() and not pd.isna(s.std()) else 1.0
+    q["quality_score"] = q.apply(
+        lambda r: compute_pitcher_quality_score_zscore(r, z_mean, z_std), axis=1
+    )
+    q["quality_score"] = _scale_z_to_0_100(q["quality_score"])
     q["grade"] = q["quality_score"].apply(quality_grade)
-    # Include mlbID and raw percentile columns so the app can join + recompute
     base = ["mlbID", "Name", "Tm", "IP", "ERA", "xera", "WHIP", "SO9", "quality_score", "grade"]
-    cols = [c for c in base + PCT_COLS if c in q.columns]
+    raw_cols = [c for c, _ in ZSCORE_COLS if c in q.columns and c not in base]
+    # Include wOBA and hard-hit for correlation analysis in UI
+    extra = [c for c in ("woba", "savant_woba", "ev95percent") if c in q.columns and c not in base + raw_cols]
+    cols = list(dict.fromkeys(c for c in base + raw_cols + extra if c in q.columns))
     return q[cols].sort_values("quality_score", ascending=False, na_position="last").reset_index(drop=True)
+
+
+def _scale_z_to_0_100(z_series: pd.Series) -> pd.Series:
+    """Scale z-score-like values (roughly -3 to +3) to 0-100."""
+    z = z_series.dropna()
+    if len(z) < 2:
+        return z_series
+    lo, hi = z.quantile(0.02), z.quantile(0.98)
+    if hi - lo == 0:
+        return z_series
+    scaled = (z_series - lo) / (hi - lo) * 100
+    return scaled.clip(0, 100).round(1)
 
 
 def quality_component_correlations(df: pd.DataFrame, min_ip: float = 30.0) -> pd.DataFrame:
     """
-    Compute Pearson correlation of each Savant percentile component with
-    ERA, WHIP, and SO9. Helps the user decide how to weight the quality score.
-    Negative correlation with ERA = component is a good quality indicator.
+    Compute Pearson correlation of each z-score component (raw stat) with
+    ERA, WHIP, and SO9. Negative with ERA/WHIP = good; positive with SO9 = good.
     """
     q = df[df["IP"].fillna(0) >= min_ip].copy()
-    targets = [c for c in ["ERA", "WHIP", "SO9", "xera"] if c in q.columns]
-    available_pct = [c for c in PCT_COLS if c in q.columns]
+    if "bb_rate" not in q.columns and "BF" in q.columns and "BB" in q.columns:
+        q["bb_rate"] = q["BB"] / q["BF"].replace(0, np.nan)
+    targets = [c for c in ["ERA", "WHIP", "SO9"] if c in q.columns]
+    available = [c for c, _ in ZSCORE_COLS if c in q.columns]
     rows = []
-    for pc in available_pct:
-        row = {"component": pc}
+    labels = {"xera": "xERA", "SO9": "SO9", "est_woba": "est.wOBA", "bb_rate": "BB%", "brl_percent": "Barrel%"}
+    for col in available:
+        row = {"component": labels.get(col, col)}
         for t in targets:
-            sub = q[[pc, t]].dropna()
+            sub = q[[col, t]].dropna()
             if len(sub) > 10:
-                row[t] = round(sub[pc].corr(sub[t]), 3)
+                row[t] = round(sub[col].corr(sub[t]), 3)
             else:
                 row[t] = None
         rows.append(row)
@@ -580,7 +628,7 @@ def run_regression_pipeline(
     )
     latest = pd.read_parquet(PROCESSED_DIR / f"pitching_profiles_{latest_season}.parquet")
 
-    # Merge expected stats into latest
+    # Merge expected stats into latest (only cols not already in latest to avoid _x/_y suffixes)
     exp = load_expected_stats([latest_season])
     if not exp.empty:
         exp["era_vs_xera"]  = exp["era_minus_xera_diff"]
@@ -590,7 +638,10 @@ def run_regression_pipeline(
                     "woba", "est_woba", "woba_vs_est",
                     "era", "xera", "era_vs_xera"]
         exp_sub = exp[[c for c in exp_cols if c in exp.columns]].copy()
-        latest = latest.merge(exp_sub, on="mlbID", how="left")
+        # Only merge columns that latest doesn't already have (avoids xera_x/xera_y duplicates)
+        merge_cols = ["mlbID"] + [c for c in exp_sub.columns if c != "mlbID" and c not in latest.columns]
+        if len(merge_cols) > 1:
+            latest = latest.merge(exp_sub[merge_cols], on="mlbID", how="left")
 
     # Quality leaderboard
     quality_lb = build_quality_leaderboard(latest, min_ip=20)
