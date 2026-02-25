@@ -720,7 +720,7 @@ with tab_search:
             "Arsenal-based matching yields stylistic comps (useful for role projections and buy-low identification) rather than surface-stat similarity."
         )
         st.markdown(
-            "Each pitch type is compared apples-to-apples (four-seamer vs four-seamer). "
+            "Each pitch type is compared apples-to-apples (e.g., four-seamer vs four-seamer). "
         )
         pitcher_list = sorted(df["player_name"].dropna().unique())
         selected = st.selectbox("Select a pitcher", pitcher_list,
