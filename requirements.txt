@@ -1,0 +1,28 @@
+# Pinned for deployment stability — update periodically and test locally
+# Generated 2025-02
+
+# Core data
+pandas==2.2.3
+numpy==1.26.4
+pyarrow==18.1.0
+pybaseball==2.2.7
+
+# ML / Clustering
+scikit-learn==1.5.2
+scipy>=1.11.0
+umap-learn==0.5.6
+
+# Visualization
+matplotlib==3.9.2
+seaborn==0.13.2
+plotly==5.24.1
+
+# LLM integration
+openai==1.55.3
+
+# Dashboard
+streamlit==1.40.1
+
+# Utilities
+tqdm==4.67.1
+joblib==1.4.2
