@@ -29,9 +29,22 @@ import plotly.io as pio
 import json
 
 # Light chart backgrounds — avoids weird colors when Streamlit is in dark mode
-# Vibrant color palettes for charts
+# Color schemes tuned for dark-theme app (plots on white, saturated colors for visibility)
 pio.templates.default = "plotly_white"
-CLUSTER_COLORS = px.colors.qualitative.Set2 + px.colors.qualitative.Bold
+CLUSTER_COLORS = list(px.colors.qualitative.Set1) + list(px.colors.qualitative.Vivid)  # Saturated, distinct
+# Semantic colors
+COLOR_LUCK_HIST = "#0284c7"       # Deep blue
+COLOR_K9_SCATTER = "#10b981"      # Emerald
+COLOR_QUALITY_DIST = "#8b5cf6"    # Violet
+
+# Transparent plot backgrounds (blend with dark dashboard) + white text
+_PLOT_TRANSPARENT = dict(
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="white"),
+    xaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
+    yaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
+    legend=dict(font=dict(color="white")),
+)
 
 
 def _last_first_to_first_last(name: str) -> str:
@@ -58,29 +71,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# UI polish: spacing, typography. Light mode — force background + text for readable contrast when deployed.
+# UI polish: spacing, typography. Theme-agnostic — uses Streamlit default (light or dark).
 st.markdown("""
 <style>
-    [data-testid="stAppViewContainer"] { 
-        background-color: #ffffff !important; 
-        color: #0f172a !important; 
-    }
-    [data-testid="stAppViewContainer"] p, [data-testid="stAppViewContainer"] span, 
-    [data-testid="stAppViewContainer"] div[data-testid="stMarkdown"] { color: #1e293b !important; }
-    [data-testid="stAppViewContainer"] h1, [data-testid="stAppViewContainer"] h2, 
-    [data-testid="stAppViewContainer"] h3, [data-testid="stAppViewContainer"] h4 { color: #0f172a !important; }
-    [data-testid="stAppViewContainer"] label { color: #334155 !important; }
-    [data-testid="stHeader"] { background-color: rgba(255,255,255,0.95) !important; color: #0f172a !important; }
-    section[data-testid="stSidebar"] { background-color: #f8fafc !important; color: #1e293b !important; }
-    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { background-color: #f8fafc !important; color: #1e293b !important; }
-    section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p { color: #334155 !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 0.25rem; }
-    .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; color: #334155 !important; }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] { color: #0f172a !important; }
+    .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; }
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
-    h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; color: #0f172a !important; }
-    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; color: #0f172a !important; }
-    .main-subtitle { font-size: 0.9rem; margin-bottom: 1rem; color: #475569 !important; }
+    h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
+    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .main-subtitle { font-size: 0.9rem; margin-bottom: 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -274,7 +273,7 @@ with st.sidebar:
     st.divider()
 
     st.subheader("Pitch symbols")
-    st.caption("  ·  ".join(f"{c} = {n}" for c, n in PITCH_SYMBOL_KEY.items()))
+    st.markdown("\n".join(f"- **{c}** = {n}" for c, n in PITCH_SYMBOL_KEY.items()))
 
     # Only show Re-run clustering when local pitch cache exists (not on Streamlit Cloud)
     if _has_cache:
@@ -370,19 +369,15 @@ def compute_league_avg_pct(df: pd.DataFrame) -> dict:
 import re as _re
 
 
-def _narrative_to_bullets(text: str) -> str:
-    """Convert narrative to bullet format. Single space between bullets; strip trailing commas."""
+def _narrative_to_plain(text: str) -> str:
+    """Format narrative as flowing paragraphs (no bullets)."""
     if not text:
         return text
-    # Already bulleted: single space between bullets, strip trailing commas
-    if "•" in text[:100] or "\n•" in text:
-        out = text.replace("\n\n", "\n")  # collapse double breaks to single
-        lines = [line.rstrip(", ").strip() for line in out.split("\n") if line.strip()]
-        return "\n".join(lines)
-    parts = [p.strip().rstrip(",") for p in text.replace(" and ", ". ").split(". ") if p.strip() and len(p.strip()) > 15]
-    if len(parts) <= 1:
-        return text
-    return "\n".join("• " + p for p in parts)
+    # Collapse bullet-like lines into sentences
+    out = text.replace("\n\n", "\n").replace("\n• ", ". ").replace("\n", " ")
+    # Single space between sentences
+    out = " ".join(out.split())
+    return out
 
 
 def _parse_archetype(summary_text: str) -> str:
@@ -443,7 +438,7 @@ def cluster_scatter(df, cluster_col, title, labels_map: dict | None = None):
                      color_discrete_sequence=CLUSTER_COLORS)
     fig.update_traces(marker=dict(size=10, line=dict(width=1, color="white")))
     fig.update_layout(height=550, legend_title_text="Cluster · Archetype",
-                      plot_bgcolor="rgba(248,250,252,0.5)", paper_bgcolor="white")
+                      **_PLOT_TRANSPARENT)
     return fig
 
 
@@ -477,7 +472,8 @@ def umap_scatter(df, cluster_col, labels_map: dict | None = None,
     fig = px.scatter(plot_df, x=x_axis, y=y_axis, color="Cluster",
                      hover_data=["Pitcher", "FB velo", "Primary spin"],
                      title=title, opacity=0.7)
-    fig.update_layout(height=550, legend_title_text="Cluster · Archetype")
+    fig.update_layout(height=550, legend_title_text="Cluster · Archetype",
+                      **_PLOT_TRANSPARENT)
     return fig
 
 
@@ -673,7 +669,13 @@ with tab_cluster:
                         color_discrete_sequence=CLUSTER_COLORS,
                     )
                     fig.update_traces(marker=dict(size=5, line=dict(width=0.5, color="white")))
-                    fig.update_layout(height=550, scene=dict(bgcolor="rgba(248,250,252,0.5)"))
+                    fig.update_layout(height=550, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                        scene=dict(
+                            bgcolor="rgba(0,0,0,0)",
+                            xaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
+                            yaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
+                            zaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
+                        ), font=dict(color="white"), legend=dict(font=dict(color="white")))
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     fig = cluster_scatter(df, sel_col, "KMeans (PCA)", labels_map=labels_map)
@@ -693,12 +695,12 @@ with tab_cluster:
                             st.markdown(f"### Cluster {cid} · **{arch}**")
                             st.caption(f"{n} pitchers")
                             # Skip redundant "Cluster N — ARCHETYPE:" line when we have header
-                            display_text = _narrative_to_bullets(text)
+                            display_text = _narrative_to_plain(text)
                             if "\n" in display_text and "—" in display_text.split("\n")[0]:
                                 display_text = "\n".join(display_text.split("\n")[1:]).strip()
                         else:
                             st.markdown(f"**Cluster {cid}** ({n})")
-                            display_text = _narrative_to_bullets(text)
+                            display_text = _narrative_to_plain(text)
                         st.markdown(display_text[:600] + "…" if len(display_text) > 600 else display_text)
 
 
@@ -769,7 +771,7 @@ with tab_search:
             )
             if kmeans_summaries and cluster_col and str(cluster_id) in kmeans_summaries:
                 st.markdown("**Cluster narrative**")
-                st.markdown(_narrative_to_bullets(kmeans_summaries[str(cluster_id)]))
+                st.markdown(_narrative_to_plain(kmeans_summaries[str(cluster_id)]))
 
             st.divider()
             st.subheader(f"10 Most Similar Pitchers to {_last_first_to_first_last(selected)}")
@@ -1067,23 +1069,9 @@ with tab_trad:
     year_range = f"{pitching_df[year_col].min()}–{pitching_df[year_col].max()}" if year_col else season_label
     st.caption(f"{n_rows} pitcher-seasons · {year_range} · min 20 IP")
 
-    # --- Search (selectbox = autocomplete) ---
-    all_names = sorted(pitching_df["Name"].dropna().unique().tolist())
-    search_options = [""] + all_names if all_names else [""]
-    search_name = st.selectbox(
-        "Search pitcher name",
-        options=search_options,
-        format_func=lambda x: "(select or type to search...)" if x == "" else x,
-        key="trad_search",
-    )
     display_df = pitching_df.copy()
-    if search_name:
-        _norm_q = _normalize_for_search(search_name)
-        display_df = display_df[
-            display_df["Name"].apply(lambda x: _norm_q in _normalize_for_search(x))
-        ]
 
-    # --- Visuals (scatter, luck dist, etc.) — search filters display_df ---
+    # --- Visuals (scatter, luck dist, etc.) ---
     st.subheader(f"Visuals — {season_label}")
 
     # ERA vs xERA scatter
@@ -1095,7 +1083,7 @@ with tab_trad:
         fig_s = px.scatter(
             scatter_src, x="xera", y="ERA", color="era_vs_xera",
             hover_data=hover,
-            color_continuous_scale="Portland",  # vibrant blue–red gradient
+            color_continuous_scale="RdBu_r",   # Red=unlucky, blue=lucky (diverging)
             labels={"xera": "xERA (expected)", "ERA": "Actual ERA"},
             title=f"ERA vs xERA — {season_label}",
         )
@@ -1103,10 +1091,10 @@ with tab_trad:
         mn = min(scatter_src[["ERA", "xera"]].min())
         mx = max(scatter_src[["ERA", "xera"]].max())
         fig_s.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
-                        line=dict(dash="dash", color="gray"))
+                        line=dict(dash="dash", color="rgba(200,200,200,0.7)"))
         fig_s.add_annotation(x=mx * 0.92, y=mx * 0.92, text="ERA = xERA",
-                              showarrow=False, font=dict(color="#64748b", size=11))
-        fig_s.update_layout(height=500, coloraxis_showscale=False, plot_bgcolor="rgba(248,250,252,0.5)")
+                              showarrow=False, font=dict(color="white", size=11))
+        fig_s.update_layout(height=500, coloraxis_showscale=False, **_PLOT_TRANSPARENT)
         st.plotly_chart(fig_s, use_container_width=True)
         st.caption(
             "**Above the diagonal:** ERA exceeded xERA—unlucky outcomes or poor defense. "
@@ -1125,11 +1113,11 @@ with tab_trad:
                 luck_src, x="era_minus_xera", nbins=40,
                 labels={"era_minus_xera": "ERA − xERA (positive = unlucky)"},
                 title="Luck distribution (ERA − xERA)",
-                color_discrete_sequence=["#0ea5e9"],
+                color_discrete_sequence=[COLOR_LUCK_HIST],
             )
             fig_luck.update_traces(marker_line_color="white", marker_line_width=1)
             fig_luck.add_vline(x=0, line_dash="dash", line_color="#e11d48", line_width=2)
-            fig_luck.update_layout(height=350, plot_bgcolor="rgba(248,250,252,0.5)")
+            fig_luck.update_layout(height=350, **_PLOT_TRANSPARENT)
             st.plotly_chart(fig_luck, use_container_width=True)
             st.caption(
                 "Values above zero indicate unlucky pitcher-seasons (actual ERA exceeded expected); values below zero indicate outperformance. "
@@ -1144,8 +1132,8 @@ with tab_trad:
             title="Strikeout rate (K/9) vs ERA",
             labels={"SO9": "K/9", "ERA": "ERA"},
         )
-        fig_k9.update_traces(marker=dict(size=8, symbol="diamond", color="#059669", line=dict(width=0.5, color="white")))
-        fig_k9.update_layout(height=400, plot_bgcolor="rgba(248,250,252,0.5)")
+        fig_k9.update_traces(marker=dict(size=8, symbol="diamond", color=COLOR_K9_SCATTER, line=dict(width=0.5, color="white")))
+        fig_k9.update_layout(height=400, **_PLOT_TRANSPARENT)
         st.plotly_chart(fig_k9, use_container_width=True)
         r, p = pearsonr(k9_era["SO9"], k9_era["ERA"])
         sig = "p < 0.001" if p < 0.001 else f"p = {p:.3f}" if p < 0.05 else f"p = {p:.2f} (n.s.)"
@@ -1155,7 +1143,6 @@ with tab_trad:
         )
 
     st.divider()
-    st.caption("Use the search box above to focus on a specific pitcher.")
 
 
 # ===========================================================================
@@ -1251,10 +1238,10 @@ with tab_quality:
             st.dataframe(grade_df, use_container_width=True, hide_index=True)
         with col_hist:
             fig_gd = px.bar(grade_df, x="Grade", y="Count", category_orders={"Grade": grade_order},
-                             color="Count", color_continuous_scale="Teal", labels={"Count": "Pitchers"})
+                             color="Count", color_continuous_scale="Viridis", labels={"Count": "Pitchers"})
             fig_gd.update_traces(marker_line_color="white", marker_line_width=1)
             fig_gd.update_layout(height=300, margin=dict(t=20, b=40), coloraxis_showscale=False,
-                                plot_bgcolor="rgba(248,250,252,0.5)", xaxis_tickangle=0)
+                                xaxis_tickangle=0, **_PLOT_TRANSPARENT)
             st.plotly_chart(fig_gd, use_container_width=True)
 
         st.divider()
@@ -1305,11 +1292,7 @@ with tab_quality:
 
         # ---- Leaderboard ----
         st.subheader("Leaderboard")
-        search_q = st.text_input("Search pitcher", key="quality_search")
         display_ql = ql.copy()
-        if search_q:
-            _nq = _normalize_for_search(search_q)
-            display_ql = display_ql[display_ql["Name"].apply(lambda x: _nq in _normalize_for_search(x))]
         min_score = st.slider("Minimum quality score", 0, 100, 0, 5)
         display_ql = display_ql[display_ql["quality_score"].fillna(0) >= min_score]
 
@@ -1326,14 +1309,14 @@ with tab_quality:
 
         fig_dist = px.histogram(
             ql.dropna(subset=["quality_score"]), x="quality_score", nbins=20,
-            color_discrete_sequence=["#7c3aed"],
+            color_discrete_sequence=[COLOR_QUALITY_DIST],
             title="Distribution of Pitcher Quality Scores",
             labels={"quality_score": "Quality Score (0–100)"},
         )
         fig_dist.update_traces(marker_line_color="white", marker_line_width=1)
         fig_dist.add_vline(x=50, line_dash="dash", line_color="#e11d48", line_width=2,
-                           annotation_text="League avg (50)")
-        fig_dist.update_layout(height=300, plot_bgcolor="rgba(248,250,252,0.5)")
+                           annotation_text="League avg (50)", annotation_font=dict(color="white"))
+        fig_dist.update_layout(height=300, **_PLOT_TRANSPARENT)
         st.plotly_chart(fig_dist, use_container_width=True)
 
 
@@ -1386,10 +1369,11 @@ with tab_regression:
                     imp, x="importance", y="feature",
                     orientation="h",
                     labels={"importance": "Importance", "feature": "Feature"},
-                    color="importance", color_continuous_scale="Teal",
+                    color="importance", color_continuous_scale="Plasma",
                 )
-                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), yaxis={"categoryorder": "total ascending"},
-                                         coloraxis_showscale=False, plot_bgcolor="rgba(248,250,252,0.5)")
+                _layout = dict(_PLOT_TRANSPARENT)
+                _layout["yaxis"] = dict(_layout["yaxis"], categoryorder="total ascending")
+                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), coloraxis_showscale=False, **_layout)
                 st.plotly_chart(fig_arsenal, use_container_width=True)
     else:
         # --- Overview RMSE table ---
@@ -1404,7 +1388,7 @@ with tab_regression:
         n_folds = cmp["Folds"].iloc[0] if "Folds" in cmp.columns else ""
         st.dataframe(
             display_cmp.style
-            .highlight_min(subset=model_cols, axis=1, color="#c6efce")
+            .highlight_min(subset=model_cols, axis=1, color="#1a9850")
             .format(fmt),
             use_container_width=True,
             height=260,
@@ -1436,11 +1420,11 @@ with tab_regression:
                 mn = min(luck_df["luck_this_year"].min(), luck_df["luck_next_year"].min())
                 mx = max(luck_df["luck_this_year"].max(), luck_df["luck_next_year"].max())
                 fig_luck.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
-                                  line=dict(dash="dash", color="gray"))
-                fig_luck.add_hline(y=0, line_dash="dot", line_color="lightgray")
-                fig_luck.add_vline(x=0, line_dash="dot", line_color="lightgray")
+                                  line=dict(dash="dash", color="rgba(200,200,200,0.7)"))
+                fig_luck.add_hline(y=0, line_dash="dot", line_color="rgba(150,150,150,0.5)")
+                fig_luck.add_vline(x=0, line_dash="dot", line_color="rgba(150,150,150,0.5)")
                 fig_luck.update_traces(marker=dict(size=6, opacity=0.7))
-                fig_luck.update_layout(height=420, plot_bgcolor="rgba(248,250,252,0.5)")
+                fig_luck.update_layout(height=420, **_PLOT_TRANSPARENT)
                 st.plotly_chart(fig_luck, use_container_width=True)
                 from scipy.stats import pearsonr
                 corr, p_val = pearsonr(luck_df["luck_this_year"], luck_df["luck_next_year"])
@@ -1468,10 +1452,11 @@ with tab_regression:
                     imp, x="importance", y="feature",
                     orientation="h",
                     labels={"importance": "Importance", "feature": "Feature"},
-                    color="importance", color_continuous_scale="Teal",
+                    color="importance", color_continuous_scale="Plasma",
                 )
-                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), yaxis={"categoryorder": "total ascending"},
-                                         coloraxis_showscale=False, plot_bgcolor="rgba(248,250,252,0.5)")
+                _layout = dict(_PLOT_TRANSPARENT)
+                _layout["yaxis"] = dict(_layout["yaxis"], categoryorder="total ascending")
+                fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), coloraxis_showscale=False, **_layout)
                 st.plotly_chart(fig_arsenal, use_container_width=True)
 
         st.divider()
@@ -1538,10 +1523,9 @@ with tab_regression:
                     fi.sort_values("importance"),
                     x="importance", y="label", orientation="h",
                     title=f"RF Feature Importances — {sel['label']}",
-                    color="importance", color_continuous_scale="Blues",
+                    color="importance", color_continuous_scale="Plasma",
                 )
-                fig_fi.update_layout(coloraxis_showscale=False, height=400,
-                                     yaxis_title="", xaxis_title="Importance")
+                fig_fi.update_layout(coloraxis_showscale=False, height=400, yaxis_title="", xaxis_title="Importance", **_PLOT_TRANSPARENT)
                 st.plotly_chart(fig_fi, use_container_width=True)
             else:
                 st.info("No feature importance data for this target.")
