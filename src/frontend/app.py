@@ -721,7 +721,6 @@ with tab_search:
         )
         st.markdown(
             "Each pitch type is compared apples-to-apples (four-seamer vs four-seamer). "
-            "`min(pct_i, pct_j)` weighting downweights rarely thrown pitches in the distance metric."
         )
         pitcher_list = sorted(df["player_name"].dropna().unique())
         selected = st.selectbox("Select a pitcher", pitcher_list,
