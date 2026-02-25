@@ -180,6 +180,13 @@ def load_regression_outputs():
     luck_p = PROCESSED_DIR / "luck_this_vs_next.parquet"
     if luck_p.exists():
         out["luck_this_vs_next"] = pd.read_parquet(luck_p)
+    # Regression metadata (e.g. latest_season for quality leaderboard)
+    meta_p = PROCESSED_DIR / "regression_metadata.json"
+    if meta_p.exists():
+        try:
+            out["regression_metadata"] = json.load(meta_p.open())
+        except Exception:
+            pass
     return out
 
 
@@ -213,6 +220,17 @@ PITCH_SYMBOL_KEY = {
 
 with st.sidebar:
     st.header("⚙️ Settings")
+
+    with st.expander("How data updates work", expanded=False):
+        st.markdown(
+            "Ordinarily, this dashboard would allow you to **rerun the full pipeline** (clustering, regression, quality scores) with the push of a button. "
+            "However, Streamlit Cloud's stateless execution and resource limits make it infeasible to run compute-heavy pipelines on demand—each rerun would rebuild from scratch with no persistent disk."
+        )
+        st.markdown(
+            "Instead, the app **reads from pre-computed outputs** (parquet files, JSON summaries) generated when you run `python run_pipeline.py` locally. "
+            "The sidebar offers some **yearly flexibility** (e.g. 2020–2025) for stats, similarity, and clustering where the underlying cache supports it; "
+            "full pipeline regeneration requires running the pipeline locally."
+        )
 
     # Check if we have local pitch cache (Streamlit Cloud typically does not)
     _sc_root = ROOT / "data" / "statcast_pitches"
@@ -339,13 +357,16 @@ import re as _re
 
 
 def _narrative_to_bullets(text: str) -> str:
-    """Convert narrative to bullet format if it's long-form. Already-bulleted text passed through."""
-    if not text or "•" in text[:100] or "\n•" in text:
+    """Convert narrative to bullet format if it's long-form. Already-bulleted text gets paragraph breaks."""
+    if not text:
         return text
+    # Add paragraph breaks between bullets for readability
+    if "•" in text[:100] or "\n•" in text:
+        return text.replace("\n•", "\n\n•")
     parts = [p.strip() for p in text.replace(" and ", ". ").split(". ") if p.strip() and len(p.strip()) > 15]
     if len(parts) <= 1:
         return text
-    return "• " + "\n• ".join(parts)
+    return "\n\n".join("• " + p for p in parts)
 
 
 def _parse_archetype(summary_text: str) -> str:
@@ -604,31 +625,20 @@ with tab_cluster:
         if sel_col:
             summ = kmeans_summaries
             labels_map = _build_labels_map(summ) if summ else None
-            viz_type = st.radio("View", ["2D scatter (PCA)", "Cluster sizes"], horizontal=True, key="clust_viz")
             col_viz, col_info = st.columns([3, 1])
             with col_viz:
-                if viz_type == "Cluster sizes":
-                    sizes_viz = df[sel_col].value_counts().sort_index()
-                    fig_bar = px.bar(x=sizes_viz.index.astype(str), y=sizes_viz.values,
-                                    labels={"x": "Cluster", "y": "Pitchers"}, title="KMeans · Cluster sizes",
-                                    color=sizes_viz.values, color_continuous_scale="Teal")
-                    fig_bar.update_traces(marker_line_color="white", marker_line_width=1)
-                    fig_bar.update_layout(height=400, margin=dict(t=30, b=30), coloraxis_showscale=False,
-                                         plot_bgcolor="rgba(248,250,252,0.5)")
-                    st.plotly_chart(fig_bar, use_container_width=True)
+                x_ax = "pca_0" if "pca_0" in df.columns else None
+                y_ax = "pca_1" if "pca_1" in df.columns else None
+                if x_ax and y_ax:
+                    fig = px.scatter(df, x=x_ax, y=y_ax, color=df[sel_col].astype(str),
+                                    hover_data=["player_name"], title="KMeans clusters (PCA projection)",
+                                    color_discrete_sequence=CLUSTER_COLORS)
+                    fig.update_traces(marker=dict(size=9, line=dict(width=1, color="white")))
+                    fig.update_layout(height=450, plot_bgcolor="rgba(248,250,252,0.5)")
+                    st.plotly_chart(fig, use_container_width=True)
                 else:
-                    x_ax = "pca_0" if "pca_0" in df.columns else None
-                    y_ax = "pca_1" if "pca_1" in df.columns else None
-                    if x_ax and y_ax:
-                        fig = px.scatter(df, x=x_ax, y=y_ax, color=df[sel_col].astype(str),
-                                        hover_data=["player_name"], title="KMeans clusters (PCA projection)",
-                                        color_discrete_sequence=CLUSTER_COLORS)
-                        fig.update_traces(marker=dict(size=9, line=dict(width=1, color="white")))
-                        fig.update_layout(height=450, plot_bgcolor="rgba(248,250,252,0.5)")
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        fig = cluster_scatter(df, sel_col, "KMeans (PCA)", labels_map=labels_map)
-                        st.plotly_chart(fig, use_container_width=True)
+                    fig = cluster_scatter(df, sel_col, "KMeans (PCA)", labels_map=labels_map)
+                    st.plotly_chart(fig, use_container_width=True)
 
             with col_info:
                 sizes = df[sel_col].value_counts().sort_index()
@@ -1198,13 +1208,21 @@ with tab_quality:
         )
     else:
         st.markdown(
-            "The **quality score** (0–100) aggregates several underlying stats: xERA, K/9, est.wOBA, BB%, Barrel%. "
+            "The **quality score** (0–100) aggregates several underlying stats: xERA, K/9, est.wOBA, BB%, Barrel%, IP. "
             "Each stat is z-scored across the league; lower-is-better stats (xERA, BB%, etc.) are inverted so a higher score indicates better performance. "
-            "The weighted sum is then scaled to 0–100. You can adjust the component weights below to reflect your own priorities."
+            "The weighted sum is then scaled to 0–100. **You can adjust the component weights below to reflect your own priorities.**"
         )
-        ZSCORE_COLS_UI = ["xera", "SO9", "est_woba", "bb_rate", "brl_percent"]
-        ZSCORE_LABELS = {"xera": "xERA", "SO9": "SO9", "est_woba": "est.wOBA", "bb_rate": "BB%", "brl_percent": "Barrel%"}
-        DEFAULT_W = {"xera": 30, "SO9": 25, "est_woba": 20, "bb_rate": 15, "brl_percent": 10}
+        _lb_year = regression_outputs.get("regression_metadata", {}).get("latest_season")
+        if _lb_year is not None:
+            st.info(f"**Only pitchers who pitched in {_lb_year}** are included. One row per pitcher, using that season's stats. Run `python run_pipeline.py` to refresh.")
+        else:
+            st.caption(
+                "**Single-season snapshot:** Only pitchers from the most recent season in the pipeline. "
+                "One row per pitcher; multi-year pitchers appear once with their latest season's stats."
+            )
+        ZSCORE_COLS_UI = ["xera", "SO9", "est_woba", "bb_rate", "brl_percent", "IP"]
+        ZSCORE_LABELS = {"xera": "xERA", "SO9": "SO9", "est_woba": "est.wOBA", "bb_rate": "BB%", "brl_percent": "Barrel%", "IP": "IP"}
+        DEFAULT_W = {"xera": 25, "SO9": 22, "est_woba": 18, "bb_rate": 12, "brl_percent": 8, "IP": 15}
 
         with st.expander("Adjust quality score weights (auto-normalised)", expanded=False):
             w_cols = st.columns(3)
@@ -1245,7 +1263,7 @@ with tab_quality:
                 if len(s) >= 5:
                     z_mean[col] = float(s.mean())
                     z_std[col] = float(s.std()) if s.std() and not pd.isna(s.std()) else 1.0
-        if all(c in ql.columns for c in ["xera", "SO9"]):
+        if any(c in ql.columns for c in ["xera", "SO9", "IP"]):
             ql["quality_score"] = ql.apply(compute_custom_score_z, axis=1)
             lo, hi = ql["quality_score"].quantile(0.02), ql["quality_score"].quantile(0.98)
             if hi > lo:
@@ -1300,6 +1318,14 @@ with tab_quality:
                                .groupby(cluster_col)[stat_cols].mean().round(3))
                         grp.index = grp.index.astype(int)
                         grp = grp.sort_index()
+                        # Add Cluster label: number · archetype name
+                        _summaries = kmeans_summaries or {}
+                        grp["Cluster"] = [
+                            f"{cid} · {_parse_archetype(_summaries.get(str(cid), '')) or '—'}"
+                            for cid in grp.index
+                        ]
+                        grp = grp[["Cluster"] + [c for c in grp.columns if c != "Cluster"]]
+                        num_cols_grp = [c for c in grp.columns if c != "Cluster" and grp[c].dtype in ("float64", "float32", "int64", "int32")]
                         st.dataframe(
                             grp.style
                             .background_gradient(
@@ -1308,7 +1334,7 @@ with tab_quality:
                             .background_gradient(
                                 subset=[c for c in ["SO9", "quality_score"] if c in grp.columns],
                                 cmap="RdYlGn")
-                            .format("{:.2f}"),
+                            .format({c: "{:.2f}" for c in num_cols_grp}, na_rep="—"),
                             use_container_width=True,
                         )
                         st.caption("Mean surface stats per cluster. Identifies which archetype tends to perform best.")
@@ -1358,6 +1384,11 @@ with tab_regression:
         "**Luck** = ERA − xERA (deviation from expectations). Unlucky &gt; 0; lucky &lt; 0. "
         "Predicting next-season luck would inform buy-low and sell-high decisions; this analysis tests whether such prediction is feasible."
     )
+    st.markdown(
+        "**What is xERA?** Expected ERA from Statcast: it estimates what a pitcher's ERA *should* be based on contact quality (exit velocity, launch angle, sprint speed). "
+        "ERA &gt; xERA means the pitcher was *unlucky* (worse results than contact quality implied); ERA &lt; xERA means *lucky* (better results than expected). "
+        "Deviations often regress toward zero year over year."
+    )
     st.caption(
         "**Regression setup:** We use stats from **year t** (xERA, ERA, K/9, WHIP, Savant percentiles, etc.) to predict **year t+1** (next season). "
         "Walk-forward CV: train on seasons 1..k, test on k+1; expand window each fold."
@@ -1385,7 +1416,8 @@ with tab_regression:
                     "Feature importances indicate which traits drive expected run prevention."
                 )
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
-                imp = arsenal_importances.head(top_n)
+                imp = arsenal_importances.head(top_n).copy()
+                imp["importance"] = imp["importance"].round(3)
                 fig_arsenal = px.bar(
                     imp, x="importance", y="feature",
                     orientation="h",
@@ -1466,7 +1498,8 @@ with tab_regression:
             with st.expander("**Arsenal → xERA:** Which pitch traits predict expected performance?", expanded=False):
                 st.caption("RF on arsenal features → xERA. Importances show what actually drives run prevention.")
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
-                imp = arsenal_importances.head(top_n)
+                imp = arsenal_importances.head(top_n).copy()
+                imp["importance"] = imp["importance"].round(3)
                 fig_arsenal = px.bar(
                     imp, x="importance", y="feature",
                     orientation="h",
@@ -1507,12 +1540,13 @@ with tab_regression:
                     display_proj = proj[[c for c in proj.columns if c != pc]].copy()
                     st.markdown(f"**Next-season projections — {sel['label']}**")
                     st.caption("Sorted best → worst projected value. RF model trained on all historical data.")
+                    num_cols = display_proj.select_dtypes("number").columns.tolist()
                     st.dataframe(
                         display_proj.style
                         .background_gradient(subset=[lbl],
                                              cmap="RdYlGn_r" if sel["lower_better"] else "RdYlGn",
                                              vmin=vmin, vmax=vmax)
-                        .format({c: f"{{:{num_fmt}}}" for c in display_proj.select_dtypes("number").columns}),
+                        .format({c: f"{{:{num_fmt}}}" for c in num_cols}, na_rep="—"),
                         use_container_width=True, height=450,
                     )
             else:
@@ -1523,6 +1557,7 @@ with tab_regression:
             fi_file = f"fi_{selected_key}"
             if fi_file in reg:
                 fi = reg[fi_file].copy()
+                fi["importance"] = fi["importance"].round(3)
                 feat_labels = {
                     "xera": "xERA", "est_woba": "est.wOBA", "est_ba": "est.BA",
                     "era_vs_xera": "ERA−xERA (luck)", "woba_vs_est": "wOBA−est (luck)",

@@ -488,7 +488,7 @@ def _fallback_summary(
     if hh_text:
         bullets.append(f"• {hh_text.strip()}")
     return (
-        f"Cluster {cluster_id} ({n} pitchers) — {archetype}:\n" + "\n".join(bullets)
+        f"Cluster {cluster_id} ({n} pitchers) — {archetype}:\n\n" + "\n\n".join(bullets)
     )
 
 

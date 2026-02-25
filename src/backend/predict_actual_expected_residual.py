@@ -20,6 +20,7 @@ Models (consolidated)
   Naïve (mean), Linear OLS, Random Forest
 """
 
+import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -350,6 +351,9 @@ def project_next_season(
     model.fit(X_train, y_train)
 
     cur = current[current["IP"].fillna(0) >= min_ip].copy()
+    # Backfill era/xera from ERA/xERA when statcast merge omitted them (e.g. injured pitchers)
+    if target["col"] == "era" and "era" not in cur.columns and "ERA" in cur.columns:
+        cur["era"] = cur["ERA"]
     X_pred, _ = _feature_matrix(cur, feats)
     cur[f"proj_{target['col']}"] = model.predict(X_pred)
 
@@ -480,8 +484,9 @@ ZSCORE_COLS = [
     ("est_woba", True),    # lower better
     ("bb_rate", True),     # BB/BF, lower better
     ("brl_percent", True), # lower better (barrels allowed)
+    ("IP", False),         # higher better (workload)
 ]
-ZSCORE_WEIGHTS = {"xera": 0.30, "SO9": 0.25, "est_woba": 0.20, "bb_rate": 0.15, "brl_percent": 0.10}
+ZSCORE_WEIGHTS = {"xera": 0.25, "SO9": 0.22, "est_woba": 0.18, "bb_rate": 0.12, "brl_percent": 0.08, "IP": 0.15}
 GRADE_THRESHOLDS = [
     (90, "A+"), (80, "A"), (70, "B+"), (60, "B"),
     (50, "C+"), (40, "C"), (30, "D"), (0,  "F"),
@@ -684,6 +689,7 @@ def run_regression_pipeline(
 
         comparison.to_parquet(PROCESSED_DIR / "regression_comparison.parquet", index=False)
         quality_lb.to_parquet(PROCESSED_DIR / "quality_leaderboard.parquet", index=False)
+        (PROCESSED_DIR / "regression_metadata.json").write_text(json.dumps({"latest_season": latest_season}))
 
         # This-year vs next-year luck (ERA − xERA) for direct scatter
         luck_cols = ["era_vs_xera", "era_vs_xera_next", "Name", "season", "mlbID"]
