@@ -455,7 +455,7 @@ def _fallback_summary(
             f"{pitch_names.get(pt, pt)} ({diffs[pt]:+.0%})"
             for pt, _, _ in below[:2]
         )
-        pitch_mix_text += f", and avoids the {below_str}"
+        pitch_mix_text += f" and avoids the {below_str}"
 
     # ---- Extension: only if > 1 SD from league mean ----
     ext_text = ""
@@ -487,8 +487,10 @@ def _fallback_summary(
         bullets.append(f"• {ext_text.strip()}")
     if hh_text:
         bullets.append(f"• {hh_text.strip()}")
+    # Single newline between bullets; strip trailing commas from each
+    clean = [b.rstrip(", ") for b in bullets]
     return (
-        f"Cluster {cluster_id} ({n} pitchers) — {archetype}:\n\n" + "\n\n".join(bullets)
+        f"Cluster {cluster_id} ({n} pitchers) — {archetype}:\n\n" + "\n".join(clean)
     )
 
 

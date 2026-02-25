@@ -39,7 +39,7 @@ def run_kmeans(X: np.ndarray, n_clusters: int = 5) -> np.ndarray:
 
 
 def compute_pca_embedding(X: np.ndarray, n_components: int = 2) -> np.ndarray:
-    """PCA for 2D visualization."""
+    """PCA for 2D or 3D visualization."""
     pca = PCA(n_components=n_components, random_state=42)
     return pca.fit_transform(X)
 
@@ -148,9 +148,10 @@ def run_clustering_pipeline(
     labels = run_kmeans(X_scaled, n_clusters=n_clusters)
     profiles["cluster_kmeans"] = labels
 
-    pca_embed = compute_pca_embedding(X_scaled)
+    pca_embed = compute_pca_embedding(X_scaled, n_components=3)
     profiles["pca_0"] = pca_embed[:, 0]
     profiles["pca_1"] = pca_embed[:, 1]
+    profiles["pca_2"] = pca_embed[:, 2]
 
     if save_figures:
         plot_clusters_2d(pca_embed, labels, profiles, method_name="PCA", save=True)
