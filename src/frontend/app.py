@@ -58,19 +58,29 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# UI polish: spacing, typography. Light mode only — overrides browser/deployment dark mode.
+# UI polish: spacing, typography. Light mode — force background + text for readable contrast when deployed.
 st.markdown("""
 <style>
-    [data-testid="stAppViewContainer"] { background-color: #ffffff !important; }
-    [data-testid="stHeader"] { background-color: rgba(255,255,255,0.95) !important; }
-    section[data-testid="stSidebar"] { background-color: #f8fafc !important; }
-    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { background-color: #f8fafc !important; }
+    [data-testid="stAppViewContainer"] { 
+        background-color: #ffffff !important; 
+        color: #0f172a !important; 
+    }
+    [data-testid="stAppViewContainer"] p, [data-testid="stAppViewContainer"] span, 
+    [data-testid="stAppViewContainer"] div[data-testid="stMarkdown"] { color: #1e293b !important; }
+    [data-testid="stAppViewContainer"] h1, [data-testid="stAppViewContainer"] h2, 
+    [data-testid="stAppViewContainer"] h3, [data-testid="stAppViewContainer"] h4 { color: #0f172a !important; }
+    [data-testid="stAppViewContainer"] label { color: #334155 !important; }
+    [data-testid="stHeader"] { background-color: rgba(255,255,255,0.95) !important; color: #0f172a !important; }
+    section[data-testid="stSidebar"] { background-color: #f8fafc !important; color: #1e293b !important; }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { background-color: #f8fafc !important; color: #1e293b !important; }
+    section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p { color: #334155 !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 0.25rem; }
-    .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; }
+    .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; color: #334155 !important; }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] { color: #0f172a !important; }
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
-    h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
-    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
-    .main-subtitle { font-size: 0.9rem; margin-bottom: 1rem; }
+    h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; color: #0f172a !important; }
+    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; color: #0f172a !important; }
+    .main-subtitle { font-size: 0.9rem; margin-bottom: 1rem; color: #475569 !important; }
 </style>
 """, unsafe_allow_html=True)
 
