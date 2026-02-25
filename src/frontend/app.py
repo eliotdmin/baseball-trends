@@ -268,7 +268,8 @@ with st.sidebar:
                         _feats = get_clustering_features(_results["profiles"])
                         generate_all_summaries(_results["profiles"], _results["kmeans_labels"], _feats,
                                               use_llm=False, out_filename="cluster_summaries_kmeans.json")
-                        st.success(f"Done! {len(_results['profiles'])} pitchers, k={_k_clust}")
+                        _n = len(_results["profiles"])
+                        st.success(f"Done! {_n} pitchers, k={_k_clust}")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as _e:
@@ -576,7 +577,7 @@ with tab_overview:
         "|-----|-------|\n"
         "| **Clustering** | KMeans partition of pitchers by arsenal (velo, spin, movement per pitch type). PCA projection and cluster narratives. |\n"
         "| **Similarity** | Find pitchers with similar arsenals via weighted Euclidean distance. Compare two pitchers side by side. |\n"
-        "| **Performance by cluster** | ERA/WHIP/SO9 by cluster for a given year. Rosters of who’s in each cluster. |\n"
+        "| **Performance by cluster** | ERA/WHIP/SO9 by cluster for a given year. Rosters of who's in each cluster. |\n"
         "| **Stats** | Traditional stats (ERA, WHIP, K/9) + xERA. Scatter of ERA vs xERA. |\n"
         "| **Pitcher ranking tool** | Custom quality score (xERA, K%, whiff%, etc.). Grade distribution and leaderboard. |\n"
         "| **Regression** | Can we predict luck? ERA−xERA residual forecasting. Next-season projections. Arsenal → xERA feature importance. |\n"
