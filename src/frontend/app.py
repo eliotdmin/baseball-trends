@@ -58,9 +58,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# UI polish: spacing, typography. Metric boxes and expanders use Streamlit defaults (theme-aware).
+# UI polish: spacing, typography. Light mode only — overrides browser/deployment dark mode.
 st.markdown("""
 <style>
+    [data-testid="stAppViewContainer"] { background-color: #ffffff !important; }
+    [data-testid="stHeader"] { background-color: rgba(255,255,255,0.95) !important; }
+    section[data-testid="stSidebar"] { background-color: #f8fafc !important; }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { background-color: #f8fafc !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 0.25rem; }
     .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; }
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
@@ -258,6 +262,9 @@ with st.sidebar:
         st.info("**Deployed view:** Sidebar is fixed (2020–2025 data only; no re-run). Some tabs have in-tab filters and controls.")
 
     st.divider()
+
+    st.subheader("Pitch symbols")
+    st.caption("  ·  ".join(f"{c} = {n}" for c, n in PITCH_SYMBOL_KEY.items()))
 
     # Only show Re-run clustering when local pitch cache exists (not on Streamlit Cloud)
     if _has_cache:
@@ -532,10 +539,10 @@ _n_pitchers = len(df) if df is not None else 0
 _n_pitches = len(PITCH_SYMBOL_KEY)
 _intro = (
     f"There are {_n_pitchers:,} pitchers, {_n_pitches} distinct pitch types, and any possible combination of "
-    "velocity, spin, and arm slots to throw from—plus a bevy of performance metrics to analyze. " 
+    "velocity, spin, and arm slots to throw from—plus a bevy of performance metrics to analyze. "
     "Simply scanning the data and having a sense of the different types of pitchers in MLB is messy and overwhelming. "
     "This dashboard intends to make sense of the madness and provide a tool to compare pitchers "
-    "or find trends in performance."
+    f"or find trends in performance. Data spans **{_year_range[0]}–{_year_range[1]}**."
 )
 
 # Max Scherzer pitching (Wikimedia Commons, CC0). Use smaller thumb (400px) for faster load.
@@ -555,11 +562,6 @@ with col_photo:
         f'</div></div>',
         unsafe_allow_html=True,
     )
-if _has_cache:
-    st.caption("**Default view:** 2020–2025. Adjust year range in the sidebar.")
-else:
-    st.caption("**Deployed view:** 2020–2025. Locally, you can run your own clustering over any year range and number of clusters.")
-
 with st.expander("📖 Methodology & how this dashboard works", expanded=False):
     st.markdown("""
     **Why arsenal-based?**  
@@ -580,9 +582,6 @@ with st.expander("📖 Methodology & how this dashboard works", expanded=False):
     **Data sources**  
     Statcast (pitch-level), Baseball Reference, plus pipeline outputs.
     """)
-
-# Pitch type symbols — always visible on main dashboard
-st.caption("**Pitch symbols:** " + "  ·  ".join(f"{c} = {n}" for c, n in PITCH_SYMBOL_KEY.items()) + "")
 
 # ---------------------------------------------------------------------------
 # Tabs
@@ -1179,15 +1178,15 @@ with tab_quality:
         ZSCORE_LABELS = {"xera": "xERA", "SO9": "SO9", "est_woba": "est.wOBA", "bb_rate": "BB%", "brl_percent": "Barrel%", "IP": "IP"}
         DEFAULT_W = {"xera": 25, "SO9": 22, "est_woba": 18, "bb_rate": 12, "brl_percent": 8, "IP": 15}
 
-        with st.expander("Adjust quality score weights (auto-normalised)", expanded=False):
-            w_cols = st.columns(3)
-            raw_w = {}
-            for i, col in enumerate(ZSCORE_COLS_UI):
-                raw_w[col] = w_cols[i % 3].slider(
-                    ZSCORE_LABELS[col], 0, 50, DEFAULT_W.get(col, 10), 5, key=f"qw_{col}")
-            total_w = sum(raw_w.values()) or 1
-            norm_w = {k: v / total_w for k, v in raw_w.items()}
-            st.caption("Normalised: " + "  ·  ".join(f"{ZSCORE_LABELS[k]} {v:.0%}" for k, v in norm_w.items()))
+        st.markdown("**Adjust quality score weights** (auto-normalised)")
+        w_cols = st.columns(3)
+        raw_w = {}
+        for i, col in enumerate(ZSCORE_COLS_UI):
+            raw_w[col] = w_cols[i % 3].slider(
+                ZSCORE_LABELS[col], 0, 50, DEFAULT_W.get(col, 10), 5, key=f"qw_{col}")
+        total_w = sum(raw_w.values()) or 1
+        norm_w = {k: v / total_w for k, v in raw_w.items()}
+        st.caption("Normalised: " + "  ·  ".join(f"{ZSCORE_LABELS[k]} {v:.0%}" for k, v in norm_w.items()))
 
         def compute_custom_score_z(row):
             lower_better = {"xera", "est_woba", "bb_rate", "brl_percent"}
