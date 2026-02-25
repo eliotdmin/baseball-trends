@@ -58,18 +58,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# UI polish: spacing, typography, metrics
+# UI polish: spacing, typography. Metric boxes and expanders use Streamlit defaults (theme-aware).
 st.markdown("""
 <style>
     .stTabs [data-baseweb="tab-list"] { gap: 0.25rem; }
     .stTabs [data-baseweb="tab"] { padding: 0.6rem 1.2rem; font-size: 0.95rem; }
     .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 1400px; }
     h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; }
-    .stMetric { background: linear-gradient(135deg, #e8f4fd 0%, #fef3e2 50%, #f0fdf4 100%); 
-                padding: 0.85rem; border-radius: 10px; border-left: 4px solid #0ea5e9; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
-    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; color: #0f172a; }
-    .main-subtitle { color: #475569; font-size: 0.9rem; margin-bottom: 1rem; }
-    div[data-testid="stExpander"] { border: 1px solid rgba(14, 165, 233, 0.2); border-radius: 10px; background: linear-gradient(180deg, rgba(248,250,252,0.5) 0%, transparent 100%); }
+    .main-title { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .main-subtitle { font-size: 0.9rem; margin-bottom: 1rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -228,8 +225,8 @@ with st.sidebar:
         )
         st.markdown(
             "Instead, the app **reads from pre-computed outputs** (parquet files, JSON summaries) generated when you run `python run_pipeline.py` locally. "
-            "The sidebar offers some **yearly flexibility** (e.g. 2020–2025) for stats, similarity, and clustering where the underlying cache supports it; "
-            "full pipeline regeneration requires running the pipeline locally."
+            "When deployed, the **sidebar has no flexibility** (year range and re-run clustering are hidden); "
+            "however, some **individual tabs** offer filters, year selectors, and other controls that work on the pre-loaded data."
         )
 
     # Check if we have local pitch cache (Streamlit Cloud typically does not)
@@ -258,7 +255,7 @@ with st.sidebar:
         _year_range = (2020, 2025)
         all_years_mode = True
         selected_year = None
-        st.info("Locally, there is flexibility to run your own clustering algorithm over a dynamic number of years/clusters. Deployed view uses **2020–2025**.")
+        st.info("**Deployed view:** Sidebar is fixed (2020–2025 data only; no re-run). Some tabs have in-tab filters and controls.")
 
     st.divider()
 
@@ -535,12 +532,8 @@ _n_pitchers = len(df) if df is not None else 0
 _n_pitches = len(PITCH_SYMBOL_KEY)
 _intro = (
     f"There are {_n_pitchers:,} pitchers, {_n_pitches} distinct pitch types, and any possible combination of "
-    "velocity, spin, and arm slots to throw from—plus a bevy of performance metrics to analyze. "
-    "This dashboard intends to make sense of the madness and provide a tool to compare pitchers "
-    "or find trends in performance."
-) if _n_pitchers else (
-    "There are hundreds of pitchers, multiple pitch types, and any possible combination of "
-    "velocity, spin, and arm slots to throw from—plus a bevy of performance metrics to analyze. "
+    "velocity, spin, and arm slots to throw from—plus a bevy of performance metrics to analyze. " 
+    "Simply scanning the data and having a sense of the different types of pitchers in MLB is messy and overwhelming. "
     "This dashboard intends to make sense of the madness and provide a tool to compare pitchers "
     "or find trends in performance."
 )
@@ -633,7 +626,7 @@ with tab_overview:
         "| **Pitcher ranking tool** | Custom quality score (xERA, K%, whiff%, etc.). Grade distribution and leaderboard. |\n"
         "| **Regression** | Can we predict luck? ERA−xERA residual forecasting. Next-season projections. Arsenal → xERA feature importance. |\n"
         "| **Raw + intermediate Data** | Pitcher profiles, clustering feature matrix, exported parquet tables. |\n"
-        "| **Planned follow-ups** | Future analyses in the pipeline (first-half vs second-half predictiveness, etc.). |\n"
+        "| **Planned follow-ups** | Proposed analyses: first-half vs second-half predictiveness, pull rate vs xBA, aging curves, platoon splits by archetype, injury signals. |\n"
     )
     st.caption("Pitch symbols (FF, SI, SL, etc.) are in the sidebar — available on every tab.")
 
@@ -1718,16 +1711,19 @@ with tab_planned:
         "is viewed more favorably than the reverse. Is the second half of a previous season, then, genuinely more "
         "predictive of the upcoming season than the first half?"
     )
-    st.markdown("---")
-    st.markdown("### Resume highlights")
     st.markdown(
-        "- **Built end-to-end pitcher analytics platform** — Designed and implemented a full pipeline from Statcast "
-        "pitch-level data through clustering (KMeans, UMAP/HDBSCAN), similarity search, and regression models; "
-        "deployed as an interactive Streamlit dashboard with 9 tabs covering archetype discovery, comp finding, "
-        "luck vs skill analysis, and quality scoring."
+        "- **Pull rate and expected BA:** Does pull percentage add predictive power beyond exit velo and launch angle "
+        "when modeling expected batting average?"
     )
     st.markdown(
-        "- **Delivered solo from scratch** — Independently scoped data sources, preprocessed 10+ years of MLB "
-        "Statcast data, engineered arsenal features, validated model outputs, and iterated on UX; no prior codebase "
-        "or templates used."
+        "- **Arsenal aging curves:** How do velocity, spin, and pitch mix evolve with pitcher age? Can we model "
+        "career trajectory to flag early decline or late bloomers?"
+    )
+    st.markdown(
+        "- **Platoon splits by archetype:** Do certain cluster archetypes (e.g. power fastball/slider) show larger "
+        "platoon splits than others? Useful for roster construction and matchup planning."
+    )
+    st.markdown(
+        "- **Injury/durability signals:** Do specific arsenal traits (e.g. spin rate, extension, arm slot) correlate "
+        "with IL stints or innings capacity? Could inform risk adjustment in valuation."
     )
