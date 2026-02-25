@@ -548,7 +548,7 @@ _intro = (
     "velocity, spin, and arm slots to throw from—plus a bevy of performance metrics to analyze. "
     "Simply scanning the data and having a sense of the different types of pitchers in MLB is messy and overwhelming. "
     "This dashboard intends to make sense of the madness and provide a tool to compare pitchers "
-    f"or find trends in performance. Data spans **{_year_range[0]}–{_year_range[1]}**."
+    f"or find trends in performance. Data spans **{_year_range[0]}–{_year_range[1]}**. It will be continuously refined and updated as more data becomes available."
 )
 
 # Max Scherzer pitching (Wikimedia Commons, CC0). Use smaller thumb (400px) for faster load.
