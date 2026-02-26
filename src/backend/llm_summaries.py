@@ -33,6 +33,9 @@ IMPORTANT: When discussing velocity, always refer to FASTBALL velocity
 who throws a 96 mph fastball and a 78 mph curveball is a "power" pitcher —
 the curveball speed is irrelevant to their velocity tier.
 
+Use full pitch names (Four-seam fastball, Sinker, Slider, Changeup, Curveball,
+Cutter, Sweeper, Knuckle-curve, Splitter) rather than abbreviations (FF, SI, SL, etc.).
+
 Use clear, confident language suitable for a front office audience.\
 """
 
@@ -263,7 +266,7 @@ def _archetype_name(
     Priority: dominant pitch → spin anomaly → velocity tier.
     """
     top_pt, top_pct, top_z = above[0] if above else (None, 0, 0)
-    pname = pitch_names.get(top_pt, top_pt or "").title() if top_pt else ""
+    pname = pitch_names.get(top_pt, top_pt or "") if top_pt else ""
 
     # Dominant pitch ≥ 1.5 SD above league average
     if top_z >= 1.5:
@@ -327,9 +330,9 @@ def _fallback_summary(
     n = len(cluster_df)
 
     pitch_types = ["FF", "SI", "SL", "CH", "CU", "FC", "ST", "KC", "FS"]
-    pitch_names = {"FF": "four-seamer", "SI": "sinker", "SL": "slider",
-                   "CH": "changeup", "CU": "curveball", "FC": "cutter",
-                   "ST": "sweeper", "KC": "knuckle-curve", "FS": "splitter"}
+    pitch_names = {"FF": "Four-seam fastball", "SI": "Sinker", "SL": "Slider",
+                   "CH": "Changeup", "CU": "Curveball", "FC": "Cutter",
+                   "ST": "Sweeper", "KC": "Knuckle-curve", "FS": "Splitter"}
 
     ls = _compute_league_stats(profiles, pitch_types)
 
@@ -402,7 +405,8 @@ def _fallback_summary(
     below.sort(key=lambda x: x[2])
 
     # ---- Velocity description (fastball-specific, z-score based labels) ----
-    velo_src = {"velo_FF": "FF", "velo_SI": "SI", "velo_FC": "FC", "avg_velo": "overall"}.get(fb_velo_col, "FB")
+    velo_src = {"velo_FF": "Four-seam fastball", "velo_SI": "Sinker", "velo_FC": "Cutter",
+                "avg_velo": "overall"}.get(fb_velo_col, "fastball")
     if not velo_valid:
         velo_desc = f"fastball velocity n/a (pitchers in this cluster typically don't feature a primary four-seamer/sinker)"
     elif velo_z >= 2.0:
@@ -419,7 +423,8 @@ def _fallback_summary(
         velo_desc = f"notably low {velo_src} velocity ({avg_velo:.1f} mph, {velo_diff:+.1f} vs. league)"
 
     # ---- Spin description (fastball-specific, z-score based) ----
-    spin_src = {"spin_FF": "FF", "spin_SI": "SI", "spin_FC": "FC", "avg_spin": "overall"}.get(fb_spin_col, "FB")
+    spin_src = {"spin_FF": "Four-seam fastball", "spin_SI": "Sinker", "spin_FC": "Cutter",
+                "avg_spin": "overall"}.get(fb_spin_col, "fastball")
     if not spin_valid:
         spin_desc = f"fastball spin n/a (pitchers in this cluster typically don't throw a primary four-seamer/sinker)"
     elif abs(spin_z) >= 1.5:

@@ -183,15 +183,15 @@ def get_primary_spin(row: pd.Series) -> tuple[Optional[float], Optional[str]]:
 # ---------------------------------------------------------------------------
 
 PITCH_NAMES = {
-    "FF": "four-seam fastball",
-    "SI": "sinker",
-    "SL": "slider",
-    "CH": "changeup",
-    "CU": "curveball",
-    "FC": "cutter",
-    "ST": "sweeper",
-    "KC": "knuckle-curve",
-    "FS": "splitter",
+    "FF": "Four-seam fastball",
+    "SI": "Sinker",
+    "SL": "Slider",
+    "CH": "Changeup",
+    "CU": "Curveball",
+    "FC": "Cutter",
+    "ST": "Sweeper",
+    "KC": "Knuckle-curve",
+    "FS": "Splitter",
 }
 
 

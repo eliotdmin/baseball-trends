@@ -395,6 +395,23 @@ def _truncate(s: str, n: int = 18) -> str:
     return s if len(s) <= n else s[:n - 1] + "…"
 
 
+def _pitch_col_to_label(col: str) -> str:
+    """Convert column name (e.g. velo_FF, pct_SI, spin_SL) to label with full pitch name."""
+    for prefix, label in [
+        ("velo_", "velocity"),
+        ("spin_", "spin"),
+        ("break_z_", "IVB"),
+        ("break_x_", "HB"),
+        ("spin_axis_", "axis"),
+        ("pct_", "usage"),
+    ]:
+        if col.startswith(prefix):
+            pt = col.replace(prefix, "").split("_")[0]
+            full = PITCH_SYMBOL_KEY.get(pt, pt)
+            return f"{full} {label}" if label != "usage" else f"{full} usage"
+    return col
+
+
 def _build_labels_map(summaries_dict: dict) -> dict[str, str]:
     """Return {cluster_id_str: 'N · Archetype (truncated)'} from a summaries JSON dict."""
     out = {}
@@ -489,7 +506,7 @@ def render_pitcher_card(row: pd.Series, league_avg_pct: dict = None):
         cols[0].metric("Fastball velo", f"{velo:.1f} mph",
                         help=describe_velo(velo) if _insights_available else "")
     if pd.notna(spin_rpm):
-        spin_label = f"{spin_pt} spin" if spin_pt else "Primary spin"
+        spin_label = f"{PITCH_SYMBOL_KEY.get(spin_pt, spin_pt)} spin" if spin_pt else "Primary spin"
         cols[1].metric(spin_label, f"{spin_rpm:.0f} rpm",
                         help=describe_spin(spin_rpm) if _insights_available else "")
     if pd.notna(ext):
@@ -742,7 +759,7 @@ with tab_search:
             st.divider()
             render_pitcher_card(pitcher_row, league_avg_pct=league_avg_pct)
 
-            # Arsenal pie: pitch mix + velocity
+            # Arsenal pie: pitch mix + velocity — side by side with cluster info
             pct_cols = [c for c in pitcher_row.index if c.startswith("pct_") and c.replace("pct_", "") in PITCH_SYMBOL_KEY]
             pie_data = []
             for col in pct_cols:
@@ -752,47 +769,69 @@ with tab_search:
                     velo_col = f"velo_{pt}"
                     velo = pitcher_row.get(velo_col)
                     velo_str = f"{float(velo):.0f} mph" if pd.notna(velo) and float(velo) > 50 else "—"
-                    name = PITCH_SYMBOL_KEY.get(pt, pt)
-                    pie_data.append({"Pitch": f"{pt} · {velo_str}", "Usage %": float(pct) * 100, "Velo": velo_str})
-            if pie_data:
-                pie_df = pd.DataFrame(pie_data)
-                fig_pie = px.pie(pie_df, values="Usage %", names="Pitch", title=f"Arsenal mix — {_last_first_to_first_last(selected)}",
-                                 color_discrete_sequence=px.colors.qualitative.Set2,
-                                 hover_data={"Velo": True, "Usage %": ":.1f"})
-                fig_pie.update_traces(textposition="inside", textinfo="percent+label")
-                fig_pie.update_layout(height=380, showlegend=True, **_PLOT_WHITE_CARD)
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-            # Surface stats for selected pitcher
-            if trends_df is not None and len(trends_df) > 0 and "mlbID" in trends_df.columns:
-                pid = pitcher_row.get("pitcher")
-                if pd.notna(pid):
-                    pid = pd.to_numeric(pid, errors="coerce")
-                    _yr_start, _yr_end = _year_range
-                    pt = trends_df[(trends_df["mlbID"] == pid) & (trends_df["year"] >= _yr_start) & (trends_df["year"] <= _yr_end)]
-                    if not pt.empty:
-                        pt = pt.sort_values("year", ascending=False).iloc[0]
-                        surf = [f"**ERA** {float(pt['ERA']):.2f}" if pd.notna(pt.get('ERA')) else "",
-                                f"**WHIP** {float(pt['WHIP']):.3f}" if pd.notna(pt.get('WHIP')) else "",
-                                f"**K/9** {float(pt['SO9']):.1f}" if pd.notna(pt.get('SO9')) else "",
-                                f"**IP** {float(pt['IP']):.0f}" if pd.notna(pt.get('IP')) else ""]
-                        surf = [s for s in surf if s]
-                        if surf:
-                            st.caption(f"Surface stats ({int(pt['year'])}): " + " · ".join(surf))
-
-            if cluster_col and cluster_id >= 0:
-                arch = _parse_archetype(kmeans_summaries.get(str(cluster_id), "")) if (kmeans_summaries and str(cluster_id) in kmeans_summaries) else ""
-                cluster_label = f"Cluster {cluster_id}" + (f" · {arch}" if arch else "")
-            else:
-                cluster_label = "—"
-            st.markdown(
-                f'<div style="font-size: 1.4rem; font-weight: 600; margin: 0.5rem 0;">'
-                f'Cluster Assignment: {cluster_label}</div>',
-                unsafe_allow_html=True,
-            )
-            if kmeans_summaries and cluster_col and str(cluster_id) in kmeans_summaries:
-                st.markdown("**Cluster narrative**")
-                st.markdown(_narrative_to_plain(kmeans_summaries[str(cluster_id)]))
+                    full_name = PITCH_SYMBOL_KEY.get(pt, pt)
+                    pie_data.append({
+                        "Pitch": f"{full_name} · {velo_str}",
+                        "Usage %": float(pct) * 100,
+                        "HoverText": f"<b>{full_name}</b> ({pt})<br>Velocity: {velo_str}<br>Usage: {float(pct)*100:.1f}%",
+                    })
+            col_pie, col_info = st.columns([1, 1])
+            with col_pie:
+                if pie_data:
+                    pie_df = pd.DataFrame(pie_data)
+                    fig_pie = px.pie(pie_df, values="Usage %", names="Pitch",
+                                     color_discrete_sequence=px.colors.qualitative.Set2)
+                    fig_pie.update_traces(
+                        textposition="inside", textinfo="label+percent", textfont=dict(size=11),
+                        hovertext=pie_df["HoverText"].tolist(),
+                        hoverinfo="text",
+                    )
+                    st.caption(f"**Arsenal mix** — {_last_first_to_first_last(selected)}")
+                    fig_pie.update_layout(
+                        height=340,
+                        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=20, l=10, r=20),
+                        showlegend=True,
+                        legend=dict(
+                            bgcolor="rgba(255,255,255,0.95)",
+                            bordercolor="rgba(0,0,0,0.15)",
+                            font=dict(color="black", size=11),
+                            orientation="v",
+                            yanchor="middle", y=0.5, xanchor="left", x=1.02,
+                        ),
+                        annotations=[],
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+            with col_info:
+                # Surface stats for selected pitcher
+                if trends_df is not None and len(trends_df) > 0 and "mlbID" in trends_df.columns:
+                    pid = pitcher_row.get("pitcher")
+                    if pd.notna(pid):
+                        pid = pd.to_numeric(pid, errors="coerce")
+                        _yr_start, _yr_end = _year_range
+                        pt = trends_df[(trends_df["mlbID"] == pid) & (trends_df["year"] >= _yr_start) & (trends_df["year"] <= _yr_end)]
+                        if not pt.empty:
+                            pt = pt.sort_values("year", ascending=False).iloc[0]
+                            surf = [f"**ERA** {float(pt['ERA']):.2f}" if pd.notna(pt.get('ERA')) else "",
+                                    f"**WHIP** {float(pt['WHIP']):.3f}" if pd.notna(pt.get('WHIP')) else "",
+                                    f"**K/9** {float(pt['SO9']):.1f}" if pd.notna(pt.get('SO9')) else "",
+                                    f"**IP** {float(pt['IP']):.0f}" if pd.notna(pt.get('IP')) else ""]
+                            surf = [s for s in surf if s]
+                            if surf:
+                                st.caption(f"Surface stats ({int(pt['year'])}): " + " · ".join(surf))
+                if cluster_col and cluster_id >= 0:
+                    arch = _parse_archetype(kmeans_summaries.get(str(cluster_id), "")) if (kmeans_summaries and str(cluster_id) in kmeans_summaries) else ""
+                    cluster_label = f"Cluster {cluster_id}" + (f" · {arch}" if arch else "")
+                else:
+                    cluster_label = "—"
+                st.markdown(
+                    f'<div style="font-size: 1.4rem; font-weight: 600; margin: 0.5rem 0;">'
+                    f'Cluster Assignment: {cluster_label}</div>',
+                    unsafe_allow_html=True,
+                )
+                if kmeans_summaries and cluster_col and str(cluster_id) in kmeans_summaries:
+                    st.markdown("**Cluster narrative**")
+                    st.markdown(_narrative_to_plain(kmeans_summaries[str(cluster_id)]))
 
             st.divider()
             st.subheader(f"10 Most Similar Pitchers to {_last_first_to_first_last(selected)}")
@@ -860,14 +899,14 @@ with tab_search:
                             st.write(f"🔥 {velo:.1f} mph FB — {tier}")
                         if pd.notna(spin_rpm):
                             tier = describe_spin(spin_rpm) if _insights_available else ""
-                            lbl = f"{spin_pt} " if spin_pt else ""
+                            lbl = f"{PITCH_SYMBOL_KEY.get(spin_pt, spin_pt)} " if spin_pt else ""
                             st.write(f"🌀 {lbl}{spin_rpm:.0f} rpm — {tier}")
                         pitch_mix = {k: sr.get(f"pct_{k}", 0)
                                      for k in ["FF","SI","SL","CH","CU","FC","ST"]}
                         top_p = max(pitch_mix, key=pitch_mix.get)
                         lg = league_avg_pct.get(top_p, 0)
                         diff = pitch_mix[top_p] - lg
-                        st.write(f"🎯 {top_p} {pitch_mix[top_p]:.0%} ({diff:+.0%} vs avg)")
+                        st.write(f"🎯 {PITCH_SYMBOL_KEY.get(top_p, top_p)} {pitch_mix[top_p]:.0%} ({diff:+.0%} vs avg)")
                         st.caption(f"Distance: {sim_row.get('distance', 0):.4f}")
 
         st.divider()
@@ -941,11 +980,8 @@ with tab_search:
                         unit = " in"
                     else:
                         unit = " rpm"
-                    label = (c.replace("spin_axis_", "axis ")
-                             .replace("break_z_", "IVB ").replace("break_x_", "HB ")
-                             .replace("velo_", "velo ").replace("spin_", "spin "))
                     compare_rows.append({
-                        "Attribute": label,
+                        "Attribute": _pitch_col_to_label(c),
                         p1: f"{float(v1):.1f}{unit}" if pd.notna(v1) else "—",
                         p2: f"{float(v2):.1f}{unit}" if pd.notna(v2) else "—",
                         "Δ (A−B)": f"{diff:+.1f}" if diff is not None else "—",
@@ -957,7 +993,7 @@ with tab_search:
                     pct2 = f"{float(v2)*100:.0f}%" if pd.notna(v2) else "—"
                     diff = (float(v1 or 0) - float(v2 or 0)) * 100 if pd.notna(v1) and pd.notna(v2) else None
                     compare_rows.append({
-                        "Attribute": c.replace("pct_", "usage "),
+                        "Attribute": _pitch_col_to_label(c),
                         p1: pct1,
                         p2: pct2,
                         "Δ (A−B)": f"{diff:+.0f}pp" if diff is not None else "—",
@@ -1386,10 +1422,11 @@ with tab_regression:
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
                 imp = arsenal_importances.head(top_n).copy()
                 imp["importance"] = imp["importance"].round(3)
+                imp["feature_display"] = imp["feature"].apply(_pitch_col_to_label)
                 fig_arsenal = px.bar(
-                    imp, x="importance", y="feature",
+                    imp, x="importance", y="feature_display",
                     orientation="h",
-                    labels={"importance": "Importance", "feature": "Feature"},
+                    labels={"importance": "Importance", "feature_display": "Feature"},
                     color="importance", color_continuous_scale="Plasma",
                 )
                 _layout = dict(_PLOT_WHITE_CARD)
@@ -1469,10 +1506,11 @@ with tab_regression:
                 top_n = st.slider("Show top N features", 10, 50, 25, key="arsenal_fi_top")
                 imp = arsenal_importances.head(top_n).copy()
                 imp["importance"] = imp["importance"].round(3)
+                imp["feature_display"] = imp["feature"].apply(_pitch_col_to_label)
                 fig_arsenal = px.bar(
-                    imp, x="importance", y="feature",
+                    imp, x="importance", y="feature_display",
                     orientation="h",
-                    labels={"importance": "Importance", "feature": "Feature"},
+                    labels={"importance": "Importance", "feature_display": "Feature"},
                     color="importance", color_continuous_scale="Plasma",
                 )
                 _layout = dict(_PLOT_WHITE_CARD)
