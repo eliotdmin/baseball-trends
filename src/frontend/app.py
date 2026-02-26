@@ -40,7 +40,7 @@ COLOR_QUALITY_DIST = "#8b5cf6"    # Violet
 # Solid white plot backgrounds + black text (readable in both light and dark app themes)
 _PLOT_WHITE_CARD = dict(
     plot_bgcolor="white", paper_bgcolor="white",
-    font=dict(color="black"),
+    font=dict(color="black"), title_font_color="black",
     xaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
     yaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
     legend=dict(font=dict(color="black")),
@@ -670,6 +670,7 @@ with tab_cluster:
                     )
                     fig.update_traces(marker=dict(size=5, line=dict(width=0.5, color="white")))
                     fig.update_layout(height=550, plot_bgcolor="white", paper_bgcolor="white",
+                        title_font_color="black",
                         scene=dict(
                             bgcolor="white",
                             xaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
@@ -740,6 +741,27 @@ with tab_search:
 
             st.divider()
             render_pitcher_card(pitcher_row, league_avg_pct=league_avg_pct)
+
+            # Arsenal pie: pitch mix + velocity
+            pct_cols = [c for c in pitcher_row.index if c.startswith("pct_") and c.replace("pct_", "") in PITCH_SYMBOL_KEY]
+            pie_data = []
+            for col in pct_cols:
+                pt = col.replace("pct_", "")
+                pct = pitcher_row.get(col, 0) or 0
+                if pct and float(pct) >= 0.01:
+                    velo_col = f"velo_{pt}"
+                    velo = pitcher_row.get(velo_col)
+                    velo_str = f"{float(velo):.0f} mph" if pd.notna(velo) and float(velo) > 50 else "—"
+                    name = PITCH_SYMBOL_KEY.get(pt, pt)
+                    pie_data.append({"Pitch": f"{pt} · {velo_str}", "Usage %": float(pct) * 100, "Velo": velo_str})
+            if pie_data:
+                pie_df = pd.DataFrame(pie_data)
+                fig_pie = px.pie(pie_df, values="Usage %", names="Pitch", title=f"Arsenal mix — {_last_first_to_first_last(selected)}",
+                                 color_discrete_sequence=px.colors.qualitative.Set2,
+                                 hover_data={"Velo": True, "Usage %": ":.1f"})
+                fig_pie.update_traces(textposition="inside", textinfo="percent+label")
+                fig_pie.update_layout(height=380, showlegend=True, **_PLOT_WHITE_CARD)
+                st.plotly_chart(fig_pie, use_container_width=True)
 
             # Surface stats for selected pitcher
             if trends_df is not None and len(trends_df) > 0 and "mlbID" in trends_df.columns:
