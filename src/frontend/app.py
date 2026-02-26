@@ -37,13 +37,13 @@ COLOR_LUCK_HIST = "#0284c7"       # Deep blue
 COLOR_K9_SCATTER = "#10b981"      # Emerald
 COLOR_QUALITY_DIST = "#8b5cf6"    # Violet
 
-# Transparent plot backgrounds (blend with dark dashboard) + white text
-_PLOT_TRANSPARENT = dict(
-    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    font=dict(color="white"),
-    xaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
-    yaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
-    legend=dict(font=dict(color="white")),
+# Solid white plot backgrounds + black text (readable in both light and dark app themes)
+_PLOT_WHITE_CARD = dict(
+    plot_bgcolor="white", paper_bgcolor="white",
+    font=dict(color="black"),
+    xaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
+    yaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
+    legend=dict(font=dict(color="black")),
 )
 
 
@@ -438,7 +438,7 @@ def cluster_scatter(df, cluster_col, title, labels_map: dict | None = None):
                      color_discrete_sequence=CLUSTER_COLORS)
     fig.update_traces(marker=dict(size=10, line=dict(width=1, color="white")))
     fig.update_layout(height=550, legend_title_text="Cluster · Archetype",
-                      **_PLOT_TRANSPARENT)
+                      **_PLOT_WHITE_CARD)
     return fig
 
 
@@ -473,7 +473,7 @@ def umap_scatter(df, cluster_col, labels_map: dict | None = None,
                      hover_data=["Pitcher", "FB velo", "Primary spin"],
                      title=title, opacity=0.7)
     fig.update_layout(height=550, legend_title_text="Cluster · Archetype",
-                      **_PLOT_TRANSPARENT)
+                      **_PLOT_WHITE_CARD)
     return fig
 
 
@@ -669,13 +669,13 @@ with tab_cluster:
                         color_discrete_sequence=CLUSTER_COLORS,
                     )
                     fig.update_traces(marker=dict(size=5, line=dict(width=0.5, color="white")))
-                    fig.update_layout(height=550, plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    fig.update_layout(height=550, plot_bgcolor="white", paper_bgcolor="white",
                         scene=dict(
-                            bgcolor="rgba(0,0,0,0)",
-                            xaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
-                            yaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
-                            zaxis=dict(tickfont=dict(color="white"), title_font=dict(color="white"), gridcolor="rgba(128,128,128,0.3)"),
-                        ), font=dict(color="white"), legend=dict(font=dict(color="white")))
+                            bgcolor="white",
+                            xaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
+                            yaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
+                            zaxis=dict(tickfont=dict(color="black"), title_font=dict(color="black")),
+                        ), font=dict(color="black"), legend=dict(font=dict(color="black")))
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     fig = cluster_scatter(df, sel_col, "KMeans (PCA)", labels_map=labels_map)
@@ -1090,10 +1090,10 @@ with tab_trad:
         mn = min(scatter_src[["ERA", "xera"]].min())
         mx = max(scatter_src[["ERA", "xera"]].max())
         fig_s.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
-                        line=dict(dash="dash", color="rgba(200,200,200,0.7)"))
+                        line=dict(dash="dash", color="gray"))
         fig_s.add_annotation(x=mx * 0.92, y=mx * 0.92, text="ERA = xERA",
-                              showarrow=False, font=dict(color="white", size=11))
-        fig_s.update_layout(height=500, coloraxis_showscale=False, **_PLOT_TRANSPARENT)
+                              showarrow=False, font=dict(color="black", size=11))
+        fig_s.update_layout(height=500, coloraxis_showscale=False, **_PLOT_WHITE_CARD)
         st.plotly_chart(fig_s, use_container_width=True)
         st.caption(
             "**Above the diagonal:** ERA exceeded xERA—unlucky outcomes or poor defense. "
@@ -1116,7 +1116,7 @@ with tab_trad:
             )
             fig_luck.update_traces(marker_line_color="white", marker_line_width=1)
             fig_luck.add_vline(x=0, line_dash="dash", line_color="#e11d48", line_width=2)
-            fig_luck.update_layout(height=350, **_PLOT_TRANSPARENT)
+            fig_luck.update_layout(height=350, **_PLOT_WHITE_CARD)
             st.plotly_chart(fig_luck, use_container_width=True)
             st.caption(
                 "Values above zero indicate unlucky pitcher-seasons (actual ERA exceeded expected); values below zero indicate outperformance. "
@@ -1132,7 +1132,7 @@ with tab_trad:
             labels={"SO9": "K/9", "ERA": "ERA"},
         )
         fig_k9.update_traces(marker=dict(size=8, symbol="diamond", color=COLOR_K9_SCATTER, line=dict(width=0.5, color="white")))
-        fig_k9.update_layout(height=400, **_PLOT_TRANSPARENT)
+        fig_k9.update_layout(height=400, **_PLOT_WHITE_CARD)
         st.plotly_chart(fig_k9, use_container_width=True)
         r, p = pearsonr(k9_era["SO9"], k9_era["ERA"])
         sig = "p < 0.001" if p < 0.001 else f"p = {p:.3f}" if p < 0.05 else f"p = {p:.2f} (n.s.)"
@@ -1240,7 +1240,7 @@ with tab_quality:
                              color="Count", color_continuous_scale="Viridis", labels={"Count": "Pitchers"})
             fig_gd.update_traces(marker_line_color="white", marker_line_width=1)
             fig_gd.update_layout(height=300, margin=dict(t=20, b=40), coloraxis_showscale=False,
-                                xaxis_tickangle=0, **_PLOT_TRANSPARENT)
+                                xaxis_tickangle=0, **_PLOT_WHITE_CARD)
             st.plotly_chart(fig_gd, use_container_width=True)
 
         st.divider()
@@ -1314,8 +1314,8 @@ with tab_quality:
         )
         fig_dist.update_traces(marker_line_color="white", marker_line_width=1)
         fig_dist.add_vline(x=50, line_dash="dash", line_color="#e11d48", line_width=2,
-                           annotation_text="League avg (50)", annotation_font=dict(color="white"))
-        fig_dist.update_layout(height=300, **_PLOT_TRANSPARENT)
+                           annotation_text="League avg (50)", annotation_font=dict(color="black"))
+        fig_dist.update_layout(height=300, **_PLOT_WHITE_CARD)
         st.plotly_chart(fig_dist, use_container_width=True)
 
 
@@ -1370,7 +1370,7 @@ with tab_regression:
                     labels={"importance": "Importance", "feature": "Feature"},
                     color="importance", color_continuous_scale="Plasma",
                 )
-                _layout = dict(_PLOT_TRANSPARENT)
+                _layout = dict(_PLOT_WHITE_CARD)
                 _layout["yaxis"] = dict(_layout["yaxis"], categoryorder="total ascending")
                 fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), coloraxis_showscale=False, **_layout)
                 st.plotly_chart(fig_arsenal, use_container_width=True)
@@ -1419,11 +1419,11 @@ with tab_regression:
                 mn = min(luck_df["luck_this_year"].min(), luck_df["luck_next_year"].min())
                 mx = max(luck_df["luck_this_year"].max(), luck_df["luck_next_year"].max())
                 fig_luck.add_shape(type="line", x0=mn, y0=mn, x1=mx, y1=mx,
-                                  line=dict(dash="dash", color="rgba(200,200,200,0.7)"))
-                fig_luck.add_hline(y=0, line_dash="dot", line_color="rgba(150,150,150,0.5)")
-                fig_luck.add_vline(x=0, line_dash="dot", line_color="rgba(150,150,150,0.5)")
+                                  line=dict(dash="dash", color="gray"))
+                fig_luck.add_hline(y=0, line_dash="dot", line_color="lightgray")
+                fig_luck.add_vline(x=0, line_dash="dot", line_color="lightgray")
                 fig_luck.update_traces(marker=dict(size=6, opacity=0.7))
-                fig_luck.update_layout(height=420, **_PLOT_TRANSPARENT)
+                fig_luck.update_layout(height=420, **_PLOT_WHITE_CARD)
                 st.plotly_chart(fig_luck, use_container_width=True)
                 from scipy.stats import pearsonr
                 corr, p_val = pearsonr(luck_df["luck_this_year"], luck_df["luck_next_year"])
@@ -1453,7 +1453,7 @@ with tab_regression:
                     labels={"importance": "Importance", "feature": "Feature"},
                     color="importance", color_continuous_scale="Plasma",
                 )
-                _layout = dict(_PLOT_TRANSPARENT)
+                _layout = dict(_PLOT_WHITE_CARD)
                 _layout["yaxis"] = dict(_layout["yaxis"], categoryorder="total ascending")
                 fig_arsenal.update_layout(height=min(500, 200 + top_n * 12), coloraxis_showscale=False, **_layout)
                 st.plotly_chart(fig_arsenal, use_container_width=True)
@@ -1524,7 +1524,7 @@ with tab_regression:
                     title=f"RF Feature Importances — {sel['label']}",
                     color="importance", color_continuous_scale="Plasma",
                 )
-                fig_fi.update_layout(coloraxis_showscale=False, height=400, yaxis_title="", xaxis_title="Importance", **_PLOT_TRANSPARENT)
+                fig_fi.update_layout(coloraxis_showscale=False, height=400, yaxis_title="", xaxis_title="Importance", **_PLOT_WHITE_CARD)
                 st.plotly_chart(fig_fi, use_container_width=True)
             else:
                 st.info("No feature importance data for this target.")
